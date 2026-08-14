@@ -1,0 +1,46 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --color-meridian-deep: #f8fafc;
+  --color-meridian-panel: #ffffff;
+  --color-meridian-panel-raised: #f1f5f9;
+  --color-meridian-border: #e2e8f0;
+  --color-meridian-gold: #15803d;
+  --color-meridian-gold-dim: #166534;
+  --color-meridian-text-1: #0f172a;
+  --color-meridian-text-2: #334155;
+  --color-meridian-text-3: #64748b;
+  --color-meridian-gain: #16a34a;
+  --color-meridian-loss: #dc2626;
+
+  --font-serif: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+body {
+  background-color: #f8fafc;
+  color: #0f172a;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #15803d;
+}
+
+
+
