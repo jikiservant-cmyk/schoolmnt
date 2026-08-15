@@ -164,9 +164,9 @@ export async function pushAllUsersToDeviceAction(deviceSerialNumber?: string) {
       });
 
       // ZKTeco ADMS command to update user name on terminal
-      // DATA USER PIN=7001\tName=John Doe (7A)\tPri=0
+      // DATA UPDATE userinfo PIN=7001\tName=John Doe (7A)\tPri=0
       const pri = p.role === 'teacher' ? 0 : 0; // 0=Normal User, 14=Admin
-      const cmd = `DATA USER PIN=${p.device_user_id}\tName=${displayName}\tPri=${pri}`;
+      const cmd = `DATA UPDATE userinfo PIN=${p.device_user_id}\tName=${displayName}\tPri=${pri}`;
       enqueueDeviceCommand(cmd, deviceSerialNumber);
       queuedCount++;
     }

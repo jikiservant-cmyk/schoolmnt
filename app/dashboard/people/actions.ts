@@ -171,7 +171,7 @@ export async function addPersonAction(formData: FormData) {
           classes: className ? { name: className } : null
         });
 
-        enqueueDeviceCommand(`DATA USER PIN=${params.p_device_user_id}\tName=${displayName}\tPri=0`);
+        enqueueDeviceCommand(`DATA UPDATE userinfo PIN=${params.p_device_user_id}\tName=${displayName}\tPri=0`);
       } catch (cmdErr) {
         console.warn('Non-blocking: Failed to enqueue ADMS user sync command:', cmdErr);
       }
