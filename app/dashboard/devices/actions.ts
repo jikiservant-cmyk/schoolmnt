@@ -126,3 +126,59 @@ export async function addDeviceAction(formData: FormData) {
   }
 }
 
+export async function pushAllUsersToDeviceAction(deviceSerialNumber?: string) {
+  try {
+    const adminClient = createAdminClient();
+
+    // Fetch all people with a device_user_id (PIN) and their role/class info
+    const { data: people, error } = await adminClient
+      .from('people')
+      .select(`
+        id,
+        full_name,
+        role,
+        device_user_id,
+        classes:class_id(name)
+      `)
+      .not('device_user_id', 'is', null);
+
+    if (error) {
+      console.error('Failed to fetch people for device sync:', error);
+      return { error: 'Failed to fetch enrolled people.' };
+    }
+
+    if (!people || people.length === 0) {
+      return { success: true, count: 0, message: 'No people have a Device User ID (PIN) configured.' };
+    }
+
+    const { enqueueDeviceCommand } = await import('@/utils/zkteco/commandQueue');
+    const { formatZKTecoDisplayName } = await import('@/utils/zkteco/formatter');
+
+    let queuedCount = 0;
+    for (const p of people) {
+      if (!p.device_user_id) continue;
+      const displayName = formatZKTecoDisplayName({
+        full_name: p.full_name,
+        role: p.role as any,
+        classes: p.classes as any
+      });
+
+      // ZKTeco ADMS command to update user name on terminal
+      // DATA USER PIN=7001\tName=John Doe (7A)\tPri=0
+      const pri = p.role === 'teacher' ? 0 : 0; // 0=Normal User, 14=Admin
+      const cmd = `DATA USER PIN=${p.device_user_id}\tName=${displayName}\tPri=${pri}`;
+      enqueueDeviceCommand(cmd, deviceSerialNumber);
+      queuedCount++;
+    }
+
+    return {
+      success: true,
+      count: queuedCount,
+      message: `Enqueued ${queuedCount} user profile & name sync commands to biometric terminal(s).`
+    };
+  } catch (err: any) {
+    console.error('Error pushing users to device:', err);
+    return { error: err?.message || 'An unexpected error occurred during sync.' };
+  }
+}
+

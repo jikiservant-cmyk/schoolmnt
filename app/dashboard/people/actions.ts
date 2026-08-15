@@ -149,6 +149,34 @@ export async function addPersonAction(formData: FormData) {
       return { error: error.message || 'The registry transaction failed in the database.' };
     }
 
+    // If a biometric device user ID was provided, automatically enqueue a DATA USER push to the ZKTeco terminal
+    if (params.p_device_user_id) {
+      try {
+        let className = '';
+        if (role === 'student' && params.p_class_id) {
+          const { data: cls } = await supabase
+            .from('classes')
+            .select('name')
+            .eq('id', params.p_class_id)
+            .maybeSingle();
+          if (cls?.name) className = cls.name;
+        }
+
+        const { formatZKTecoDisplayName } = await import('@/utils/zkteco/formatter');
+        const { enqueueDeviceCommand } = await import('@/utils/zkteco/commandQueue');
+
+        const displayName = formatZKTecoDisplayName({
+          full_name: fullName.trim(),
+          role: role,
+          classes: className ? { name: className } : null
+        });
+
+        enqueueDeviceCommand(`DATA USER PIN=${params.p_device_user_id}\tName=${displayName}\tPri=0`);
+      } catch (cmdErr) {
+        console.warn('Non-blocking: Failed to enqueue ADMS user sync command:', cmdErr);
+      }
+    }
+
     revalidatePath('/dashboard/people');
     return { 
       success: true,
