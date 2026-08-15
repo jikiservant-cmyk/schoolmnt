@@ -113,6 +113,40 @@ export default function AddDeviceForm() {
           {isPending ? 'Provisioning Device...' : 'Register Terminal'}
         </button>
       </form>
+
+      <div className="mt-6 pt-4 border-t border-meridian-border text-[11px] font-mono text-meridian-text-3 space-y-3">
+        <div className="flex items-center gap-1.5 text-meridian-text-2 font-medium">
+          <HelpCircle className="w-3.5 h-3.5 text-meridian-gold" />
+          <span>F18 Hardware Connection Guide</span>
+        </div>
+        
+        <div className="space-y-1.5">
+          <p className="font-semibold text-meridian-text-2">1. Fix Network (Globe icon with X):</p>
+          <p className="leading-relaxed pl-3">
+            Go to <strong>Comm. &gt; Ethernet</strong>. <br/>
+            Set <strong>DHCP = ON</strong>. (If you must use OFF, type a valid IP/Gateway). <br/>
+            The 'X' on the globe must disappear before step 2 will work.
+          </p>
+        </div>
+
+        <div className="space-y-1.5 border-t border-meridian-border/50 pt-2">
+          <p className="font-semibold text-meridian-text-2">2. Fix ADMS (Red pulsating triangle):</p>
+          <p className="leading-relaxed pl-3">
+            Go to <strong>Comm. &gt; Cloud Server Setting</strong>.<br/>
+            <strong>Enable Domain Name:</strong> ON<br/>
+            <strong>Server Address:</strong> 
+            <code className="block bg-meridian-deep px-1.5 py-1 mt-1 mb-1 rounded text-meridian-gold break-all select-all">
+              ais-dev-akkeowfawefwrcoub3t3e3-159837012533.europe-west3.run.app
+            </code>
+            <br/>
+            <em>* If your device has Port/HTTPS fields:</em><br/>
+            <strong>Server Port:</strong> 443 | <strong>Enable HTTPS:</strong> ON<br/>
+            <br/>
+            <em>* If your device is missing Port/HTTPS fields:</em><br/>
+            Try adding <code className="text-meridian-gold bg-meridian-deep px-1 rounded">:443</code> to the end of the Server Address. If your firmware does not support HTTPS, it will require a firmware update or an HTTP proxy to connect to modern cloud servers.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
