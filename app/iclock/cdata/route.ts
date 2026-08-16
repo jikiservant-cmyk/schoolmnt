@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
         // Find user by device_user_id (PIN) mapped to this specific school
         const { data: person } = await supabase
           .from('people')
-          .select('id')
+          .select('id, full_name, role')
           .eq('school_id', device.school_id)
           .eq('device_user_id', pin)
           .maybeSingle();
@@ -126,6 +126,34 @@ export async function POST(req: NextRequest) {
                source: 'device'
              });
              console.log(`[ZKTeco ADMS] Logged attendance for PIN ${pin} at ${datetimeStr}`);
+
+             // If this is a student, find their primary parent and queue an SMS
+             if (person.role === 'student') {
+               const { data: studentParent } = await supabase
+                 .from('student_parents')
+                 .select('parent_id, parents(phone)')
+                 .eq('student_id', (person as any).id)
+                 .eq('is_primary_contact', true)
+                 .maybeSingle();
+                 
+               if (studentParent?.parents?.phone) {
+                 const timeFormatted = new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                 const actionText = attendanceType === 'check_in' ? 'arrived safely at school' : 'clocked out from school';
+                 const smsMessageText = `${person.full_name} has ${actionText} at ${timeFormatted}.`;
+
+                 await supabase.from('notifications').insert({
+                   school_id: device.school_id,
+                   recipient_type: 'parent',
+                   recipient_id: studentParent.parent_id,
+                   recipient_phone_snapshot: studentParent.parents.phone,
+                   channel: 'sms',
+                   notification_type: 'attendance',
+                   status: 'pending',
+                   message: smsMessageText
+                 });
+                 console.log(`[ZKTeco ADMS] Queued SMS notification for ${person.full_name}`);
+               }
+             }
            } else {
              console.log(`[ZKTeco ADMS] Duplicate attendance ignored for PIN ${pin} at ${datetimeStr}`);
            }

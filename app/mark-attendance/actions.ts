@@ -202,135 +202,8 @@ export async function submitClockInAction(deviceUserId: string) {
           : `Dear Parent, your child ${person.full_name} checked OUT of school successfully at ${timestampStr}.`;
         const smsReference = `ATT-${attendanceLog.id}-${Date.now()}`;
 
-        // Deduct SMS Cost from School Balance via public.wallets & public.schools
-        const schoolTenantId = person.school_id;
-        let canSendSms = false;
-        let walletId = "";
-        let currentWalletBalance = 0;
-
-        try {
-          const { data: wallet } = await adminClient
-            .from('wallets')
-            .select('id, balance, sms_rate')
-            .eq('tenant_id', schoolTenantId)
-            .maybeSingle();
-
-          if (wallet) {
-            walletId = wallet.id;
-            currentWalletBalance = Number(wallet.balance || 0);
-          } else {
-            // Fallback check in schools table
-            const { data: school } = await adminClient
-              .from('schools')
-              .select('id, settings')
-              .eq('id', schoolTenantId)
-              .maybeSingle();
-            if (school?.settings?.balance) {
-              currentWalletBalance = Number(school.settings.balance);
-            }
-          }
-
-          const smsRate = 50;
-          if (currentWalletBalance >= smsRate) {
-            canSendSms = true;
-            const newBalance = currentWalletBalance - smsRate;
-
-            // Ensure wallet row
-            if (!walletId) {
-              walletId = crypto.randomUUID();
-              await adminClient.from('wallets').insert({
-                id: walletId,
-                tenant_id: schoolTenantId,
-                balance: newBalance,
-                currency: 'UGX',
-                sms_rate: smsRate
-              });
-            } else {
-              await adminClient
-                .from('wallets')
-                .update({ balance: newBalance, updated_at: new Date().toISOString() })
-                .eq('id', walletId);
-            }
-
-            // Sync schools.settings
-            const { data: sch } = await adminClient
-              .from('schools')
-              .select('settings')
-              .eq('id', schoolTenantId)
-              .maybeSingle();
-            if (sch) {
-              const curSet = sch.settings || {};
-              await adminClient
-                .from('schools')
-                .update({ settings: { ...curSet, balance: newBalance } })
-                .eq('id', schoolTenantId);
-            }
-
-            // Record debit transaction in public.wallet_transactions
-            try {
-              await adminClient
-                .from('wallet_transactions')
-                .insert({
-                  id: crypto.randomUUID(),
-                  wallet_id: walletId,
-                  tenant_id: schoolTenantId,
-                  direction: 'debit',
-                  amount: smsRate,
-                  status: 'success',
-                  type: 'sms',
-                  reference: smsReference,
-                  description: `Attendance SMS dispatch for ${person.full_name || 'student'}`,
-                  currency: 'UGX'
-                });
-            } catch (txErr) {
-              console.warn('Notice recording SMS debit transaction:', txErr);
-            }
-          }
-        } catch (wErr) {
-          console.error('Error handling wallet deduction for SMS:', wErr);
-        }
-
-        let smsStatus = 'pending';
-
-        if (canSendSms && parentPhone) {
-          try {
-            const najikiDomain = process.env.NAJIKI_DOMAIN || 'api.najiki.com';
-            const najikiUrl = najikiDomain.startsWith('http') ? najikiDomain : `https://${najikiDomain}`;
-            const apiKey = process.env.NAJIKI_API_KEY || 'test_key';
-            const phoneStr = String(parentPhone); // e.g. 0700000000 -> +256700000000 formatting if needed
-
-            const formattedPhone = phoneStr.startsWith('0') ? `+256${phoneStr.slice(1)}` : phoneStr;
-
-            const smsRes = await fetch(`${najikiUrl}/api/messaging/send`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-              },
-              body: JSON.stringify({
-                to: formattedPhone,
-                recipient: formattedPhone,
-                message: smsMessageText,
-                applicationCode: process.env.NAJIKI_APP_CODE || 'SCHOOL_APP',
-                reference: smsReference
-              })
-            });
-
-            if (smsRes.ok) {
-              smsStatus = 'queued_provider';
-            } else {
-              console.warn('NaJiki SMS API returned error:', await smsRes.text());
-              smsStatus = 'failed_provider';
-            }
-          } catch (apiErr) {
-            console.error('Failed to call NaJiki SMS API', apiErr);
-            smsStatus = 'failed_api_call';
-          }
-        } else if (!canSendSms) {
-          smsStatus = 'failed_insufficient_balance';
-        }
-
         // Queue the notification in school.notifications
+        // The Supabase Edge Function will handle wallet deduction and Najiki dispatch
         const { error: queueErr } = await adminClient
           .from('notifications')
           .insert({
@@ -343,7 +216,7 @@ export async function submitClockInAction(deviceUserId: string) {
             related_table: 'attendance_logs',
             related_id: attendanceLog.id,
             message: smsMessageText,
-            status: smsStatus
+            status: 'pending'
           });
 
         if (queueErr) {

@@ -125,7 +125,7 @@ export default function AddDeviceForm() {
           <p className="leading-relaxed pl-3">
             Go to <strong>Comm. &gt; Ethernet</strong>. <br/>
             Set <strong>DHCP = ON</strong>. (If you must use OFF, type a valid IP/Gateway). <br/>
-            The 'X' on the globe must disappear before step 2 will work.
+            The &apos;X&apos; on the globe must disappear before step 2 will work.
           </p>
         </div>
 
