@@ -46,35 +46,92 @@ export async function getAttendanceData() {
 
   const schoolId = await getEffectiveSchoolId(supabase, userData.user.id);
 
-  // Get attendance logs
+  // 1. Get attendance logs (all recent logs with full people and class details)
   let logs: any[] = [];
   if (schoolId) {
     const { data, error } = await supabase
       .from('attendance_logs')
-      .select('*, people(full_name, role)')
+      .select(`
+        *,
+        people:people (
+          id,
+          full_name,
+          role,
+          class_id,
+          phone,
+          device_user_id,
+          classes:class_id (
+            name
+          )
+        )
+      `)
       .eq('school_id', schoolId)
       .order('occurred_at', { ascending: false })
-      .limit(100);
+      .limit(500);
 
     if (!error && data) {
       logs = data;
     }
   }
 
-  // Fallback if logs by school_id is empty or schoolId wasn't set
+  // Fallback if logs by school_id is empty
   if (logs.length === 0) {
     const { data, error } = await supabase
       .from('attendance_logs')
-      .select('*, people(full_name, role)')
+      .select(`
+        *,
+        people:people (
+          id,
+          full_name,
+          role,
+          class_id,
+          phone,
+          device_user_id,
+          classes:class_id (
+            name
+          )
+        )
+      `)
       .order('occurred_at', { ascending: false })
-      .limit(100);
+      .limit(500);
 
     if (!error && data) {
       logs = data;
     }
   }
 
-  // Fetch school details
+  // 2. Fetch classes
+  let classes: any[] = [];
+  const { data: classesData } = await supabase
+    .from('classes')
+    .select('id, name')
+    .order('name');
+  if (classesData) {
+    classes = classesData;
+  }
+
+  // 3. Fetch all registered people (students, teachers, admins)
+  let people: any[] = [];
+  const { data: peopleData } = await supabase
+    .from('people')
+    .select(`
+      id,
+      full_name,
+      role,
+      class_id,
+      phone,
+      device_user_id,
+      is_active,
+      classes:class_id (
+        name
+      )
+    `)
+    .order('full_name');
+  if (peopleData) {
+    people = peopleData;
+  }
+
+  // 4. Fetch school details
   let school: any = null;
   if (schoolId) {
     const { data } = await supabase
@@ -100,7 +157,7 @@ export async function getAttendanceData() {
     } else {
       school = {
         id: 'default',
-        name: 'SmartSkoolz Academy',
+        name: 'Na\'Jiki Academy',
         settings: { balance: 150000 }
       };
     }
@@ -127,8 +184,58 @@ export async function getAttendanceData() {
 
   return {
     logs: logs || [],
-    school
+    school,
+    classes: classes || [],
+    people: people || []
   };
+}
+
+export async function markTeacherAttendanceAction(
+  personId: string, 
+  status: 'present' | 'late' = 'present',
+  note?: string
+) {
+  const supabase = await createClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user) {
+    return { error: 'Unauthorized' };
+  }
+
+  const schoolId = await getEffectiveSchoolId(supabase, userData.user.id);
+
+  try {
+    const now = new Date();
+    // Check if after 8:00 AM for late calculation if not explicitly set
+    let finalStatus = status;
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    if (hours > 8 || (hours === 8 && minutes > 0)) {
+      finalStatus = 'late';
+    }
+
+    const { data, error } = await supabase
+      .from('attendance_logs')
+      .insert({
+        school_id: schoolId,
+        person_id: personId,
+        status: finalStatus,
+        attendance_type: 'check_in',
+        source: 'manual',
+        occurred_at: now.toISOString()
+      })
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath('/dashboard/attendance');
+    revalidatePath('/dashboard');
+    return { success: true, data };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to record teacher attendance' };
+  }
 }
 
 export async function topUpBalance(amount: number, phoneNumber: string) {
@@ -173,8 +280,6 @@ export async function topUpBalance(amount: number, phoneNumber: string) {
       .select('id, code, name')
       .eq('id', school.id)
       .maybeSingle() as any;
-
-    console.log(`[NaJiki TopUp] public.tenants DB lookup for school.id (${school.id}):`, { tenantData, tenantErr });
 
     if (tenantData?.code) {
       tenantCode = tenantData.code;
@@ -249,98 +354,32 @@ export async function topUpBalance(amount: number, phoneNumber: string) {
     }
   };
 
-  // Write record in public.wallet_transactions
-  const transactionId = crypto.randomUUID();
   try {
-    await publicAdmin
-      .from('wallet_transactions')
-      .insert({
-        id: transactionId,
-        wallet_id: walletId,
-        tenant_id: school.id,
-        direction: 'credit',
-        amount: amount,
-        status: 'pending',
-        type: 'topup',
-        reference: idempotencyKey,
-        payment_intent_id: idempotencyKey,
-        description: `Top up via NaJiki Mobile Money (${formattedPhone})`,
-        currency: 'UGX',
-        raw_provider_response: JSON.stringify(payload)
-      });
-    console.log(`[NaJiki TopUp] Pending record created in public.wallet_transactions: ${transactionId}`);
-  } catch (txErr) {
-    console.error('Error inserting record into public.wallet_transactions:', txErr);
-  }
-
-  console.log('[NaJiki TopUp] Exact Payload sent to NaJiki API:', JSON.stringify(payload, null, 2));
-
-  try {
-    const response = await fetch(`${najikiUrl}/api/payments`, {
+    const response = await fetch(`${najikiUrl}/api/v1/payments/collect`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        'Authorization': `Bearer ${apiKey}`,
+        'X-Tenant-Code': tenantCode
       },
       body: JSON.stringify(payload)
     });
 
-    const resData = await response.json().catch(() => ({}));
-    console.log('[NaJiki TopUp] Response from NaJiki API:', response.status, resData);
+    const resData = await response.json();
 
     if (!response.ok) {
-      // Update transaction status to failed
-      try {
-        await publicAdmin
-          .from('wallet_transactions')
-          .update({
-            status: 'failed',
-            raw_provider_response: JSON.stringify(resData)
-          })
-          .eq('id', transactionId);
-      } catch (e) {
-        console.warn('Error updating transaction failure status:', e);
-      }
-
       return { 
-        error: resData.error || resData.message || `NaJiki payment request failed with status ${response.status}` 
+        error: resData.message || 'Payment initiation failed. Please check your phone number and try again.' 
       };
     }
 
-    // Update transaction status to processing
-    try {
-      await publicAdmin
-        .from('wallet_transactions')
-        .update({
-          status: 'processing',
-          raw_provider_response: JSON.stringify(resData)
-        })
-        .eq('id', transactionId);
-    } catch (e) {
-      console.warn('Error updating transaction processing status:', e);
-    }
-
-    return { 
-      success: true, 
-      pending: true, 
-      message: resData.message || 'Payment request sent successfully! Please authorize the prompt on your phone.' 
+    return {
+      success: true,
+      transactionId: resData.transactionId || idempotencyKey,
+      message: 'Mobile Money prompt sent to your phone! Please enter your PIN to authorize payment.'
     };
   } catch (err: any) {
-    console.error('NaJiki payment gateway connection error:', err);
-
-    try {
-      await publicAdmin
-        .from('wallet_transactions')
-        .update({
-          status: 'failed',
-          raw_provider_response: JSON.stringify({ error: err?.message || 'Network error' })
-        })
-        .eq('id', transactionId);
-    } catch (e) {
-      console.warn('Error updating transaction failure status:', e);
-    }
-
-    return { error: `Failed to communicate with NaJiki payment gateway: ${err?.message || 'Network error'}` };
+    console.error('NaJiki TopUp API error:', err);
+    return { error: 'Network error communicating with payment provider.' };
   }
 }
-

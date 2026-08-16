@@ -216,7 +216,7 @@ export default function MarkAttendance() {
               
               <div className="flex justify-between items-start">
                 <span className="text-[10px] font-mono uppercase tracking-widest text-meridian-text-3 font-semibold">
-                  SMARTSKOOLZ SYSTEM
+                  NA&apos;JIKI TECH SYSTEM
                 </span>
                 
                 {/* Real-time blinking clock */}
@@ -336,7 +336,7 @@ export default function MarkAttendance() {
         </div>
 
         <div className="mt-8 text-center text-xs font-mono text-meridian-text-3">
-          SmartSkoolz Terminal &bull; <span className="text-meridian-gold font-medium">Powered by Na&apos;Jiki Tech</span>
+          Na&apos;Jiki Tech Biometric Terminal &bull; <span className="text-meridian-gold font-medium">ADMS Hardware Engine</span>
         </div>
 
       </div>

@@ -101,7 +101,7 @@ async function dispatchOne(notificationId: string) {
     .eq("status", "pending")
     .or("next_retry_at.is.null,next_retry_at.lte." + new Date().toISOString())
     .select(
-      "id,status,school_id,recipient_phone_snapshot,message,retry_count,next_retry_at"
+      "id,status,school_id,recipient_phone_snapshot,message,retry_count,next_retry_at,notification_type"
     )
     .maybeSingle();
 
@@ -130,6 +130,48 @@ async function dispatchOne(notificationId: string) {
   const notif = claimed as any;
   const nextRetryCount = (notif.retry_count ?? 0) + 1;
   const isFinalAttempt = maxAttemptsReached(nextRetryCount);
+
+  // Safeguard: Restrict attendance notifications strictly to allowed EAT hours
+  // Morning check-in: 05:00 to 09:00 EAT
+  // Evening check-out: 16:00 to 22:00 EAT
+  if (notif.notification_type === "attendance") {
+    try {
+      const formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Africa/Kampala",
+        hour: "numeric",
+        minute: "numeric",
+        hour12: false,
+      });
+      const parts = formatter.formatToParts(new Date());
+      const hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+      const minute = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
+      const totalMinutes = hour * 60 + minute;
+
+      const isMorning = totalMinutes >= 5 * 60 && totalMinutes <= 9 * 60;
+      const isEvening = totalMinutes >= 16 * 60 && totalMinutes <= 22 * 60;
+
+      if (!isMorning && !isEvening) {
+        console.log(`[Edge Function] Skipping attendance notification ${notificationId}: Current time is outside allowed windows (${hour}:${minute} EAT).`);
+        await supabase
+          .schema(SCHOOL_SCHEMA)
+          .from(NOTIFS_TABLE)
+          .update({
+            status: "failed",
+            error: "outside_attendance_dispatch_window",
+            retry_count: nextRetryCount,
+            next_retry_at: null,
+          })
+          .eq("id", notificationId);
+
+        return jsonResponse(
+          { skipped: true, reason: "outside_attendance_dispatch_window" },
+          200
+        );
+      }
+    } catch (e) {
+      console.warn("Timezone calculation fallback in edge function:", e);
+    }
+  }
 
   const phone = toE164(notif.recipient_phone_snapshot || "");
   if (!phone) {

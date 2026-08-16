@@ -2,6 +2,7 @@
 
 import { createClient } from '@/utils/supabase/server';
 import { createPublicAdminClient } from '@/utils/supabase/admin';
+import { isWithinAttendanceSmsWindow } from '@/lib/attendance-window';
 
 export async function submitClockInAction(deviceUserId: string) {
   if (!deviceUserId) {
@@ -166,64 +167,70 @@ export async function submitClockInAction(deviceUserId: string) {
     }
 
     if (person.role === 'student') {
-      // Retrieve the parent contact details (prefer primary contact, fallback to any linked parent)
-      let studentParent: any = null;
-      const { data: primaryParent, error: parentErr } = await adminClient
-        .from('student_parents')
-        .select('parent_id, parents(phone, full_name)')
-        .eq('student_id', person.id)
-        .eq('is_primary_contact', true)
-        .maybeSingle();
+      const windowCheck = isWithinAttendanceSmsWindow(attendanceType, now);
 
-      if (primaryParent) {
-        studentParent = primaryParent;
+      if (!windowCheck.allowed) {
+        console.log(`[Manual Attendance] Attendance recorded for ${person.full_name}, but SMS skipped: ${windowCheck.reason}`);
       } else {
-        const { data: fallbackParent } = await adminClient
+        // Retrieve the parent contact details (prefer primary contact, fallback to any linked parent)
+        let studentParent: any = null;
+        const { data: primaryParent, error: parentErr } = await adminClient
           .from('student_parents')
           .select('parent_id, parents(phone, full_name)')
           .eq('student_id', person.id)
+          .eq('is_primary_contact', true)
           .maybeSingle();
-        studentParent = fallbackParent;
-      }
 
-      if (studentParent && studentParent.parents) {
-        const parentId = studentParent.parent_id;
-        const parentPhone = (studentParent.parents as any).phone;
-        const parentName = (studentParent.parents as any).full_name;
-        
-        const timestampStr = now.toLocaleTimeString('en-US', { 
-          hour: '2-digit', 
-          minute: '2-digit', 
-          hour12: true 
-        });
-        
-        const smsMessageText = attendanceType === 'check_in'
-          ? `Dear Parent, your child ${person.full_name} checked in successfully at ${timestampStr}.`
-          : `Dear Parent, your child ${person.full_name} checked OUT of school successfully at ${timestampStr}.`;
-        const smsReference = `ATT-${attendanceLog.id}-${Date.now()}`;
-
-        // Queue the notification in school.notifications
-        // The Supabase Edge Function will handle wallet deduction and Najiki dispatch
-        const { error: queueErr } = await adminClient
-          .from('notifications')
-          .insert({
-            school_id: person.school_id,
-            recipient_type: 'parent',
-            recipient_id: parentId,
-            recipient_phone_snapshot: parentPhone,
-            channel: 'sms',
-            notification_type: 'attendance',
-            related_table: 'attendance_logs',
-            related_id: attendanceLog.id,
-            message: smsMessageText,
-            status: 'pending'
-          });
-
-        if (queueErr) {
-          console.error('Error writing outbound notification queue row:', queueErr);
+        if (primaryParent) {
+          studentParent = primaryParent;
+        } else {
+          const { data: fallbackParent } = await adminClient
+            .from('student_parents')
+            .select('parent_id, parents(phone, full_name)')
+            .eq('student_id', person.id)
+            .maybeSingle();
+          studentParent = fallbackParent;
         }
-      } else {
-        console.warn(`No primary contact guardian registered for student "${person.full_name}".`);
+
+        if (studentParent && studentParent.parents) {
+          const parentId = studentParent.parent_id;
+          const parentPhone = (studentParent.parents as any).phone;
+          const parentName = (studentParent.parents as any).full_name;
+          
+          const timestampStr = windowCheck.eatTimeStr || now.toLocaleTimeString('en-US', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            hour12: true 
+          });
+          
+          const smsMessageText = attendanceType === 'check_in'
+            ? `Dear Parent, your child ${person.full_name} checked in successfully at ${timestampStr}.`
+            : `Dear Parent, your child ${person.full_name} checked OUT of school successfully at ${timestampStr}.`;
+          const smsReference = `ATT-${attendanceLog.id}-${Date.now()}`;
+
+          // Queue the notification in school.notifications
+          // The Supabase Edge Function will handle wallet deduction and Najiki dispatch
+          const { error: queueErr } = await adminClient
+            .from('notifications')
+            .insert({
+              school_id: person.school_id,
+              recipient_type: 'parent',
+              recipient_id: parentId,
+              recipient_phone_snapshot: parentPhone,
+              channel: 'sms',
+              notification_type: 'attendance',
+              related_table: 'attendance_logs',
+              related_id: attendanceLog.id,
+              message: smsMessageText,
+              status: 'pending'
+            });
+
+          if (queueErr) {
+            console.error('Error writing outbound notification queue row:', queueErr);
+          }
+        } else {
+          console.warn(`No primary contact guardian registered for student "${person.full_name}".`);
+        }
       }
     }
 

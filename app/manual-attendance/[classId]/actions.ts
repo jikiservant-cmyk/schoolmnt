@@ -1,7 +1,24 @@
 'use server';
 
 import { createAdminClient, createPublicAdminClient } from '@/utils/supabase/admin';
+import { 
+  isWithinAttendanceSmsWindow, 
+  getAttendanceStatusForCheckIn,
+  getEatTodayRange,
+  getCurrentAttendanceWindowMode
+} from '@/lib/attendance-window';
 import bcrypt from 'bcryptjs';
+
+export interface StudentAttendanceStatus {
+  id: string;
+  full_name: string;
+  device_user_id: string | null;
+  has_checked_in: boolean;
+  check_in_time: string | null;
+  check_in_status: 'present' | 'late' | null;
+  has_checked_out: boolean;
+  check_out_time: string | null;
+}
 
 export async function verifyTeacherPin(classId: string, pin: string) {
   const adminClient = createAdminClient();
@@ -68,7 +85,7 @@ export async function verifyTeacherPin(classId: string, pin: string) {
 
 export async function getStudentsForClass(classId: string) {
   const adminClient = createAdminClient();
-  const { data, error } = await adminClient
+  const { data: students, error } = await adminClient
     .from('people')
     .select('id, full_name, device_user_id')
     .eq('class_id', classId)
@@ -80,9 +97,74 @@ export async function getStudentsForClass(classId: string) {
     return { error: 'Failed to fetch students.' };
   }
 
-  return { students: data || [] };
-}
+  if (!students || students.length === 0) {
+    return { students: [], activeWindowMode: getCurrentAttendanceWindowMode() };
+  }
 
+  // Fetch today's attendance logs in EAT for these students
+  const { startIso, endIso } = getEatTodayRange();
+  const studentIds = students.map(s => s.id);
+
+  const { data: logs } = await adminClient
+    .from('attendance_logs')
+    .select('person_id, attendance_type, status, occurred_at')
+    .in('person_id', studentIds)
+    .gte('occurred_at', startIso)
+    .lte('occurred_at', endIso)
+    .order('occurred_at', { ascending: true });
+
+  const logMap = new Map<string, { checkIn?: any; checkOut?: any }>();
+
+  for (const log of logs || []) {
+    const entry = logMap.get(log.person_id) || {};
+    if (log.attendance_type === 'check_in' && !entry.checkIn) {
+      entry.checkIn = log;
+    } else if (log.attendance_type === 'check_out' && !entry.checkOut) {
+      entry.checkOut = log;
+    }
+    logMap.set(log.person_id, entry);
+  }
+
+  const enrichedStudents: StudentAttendanceStatus[] = students.map(student => {
+    const studentLogs = logMap.get(student.id);
+    const checkInLog = studentLogs?.checkIn;
+    const checkOutLog = studentLogs?.checkOut;
+
+    const checkInTime = checkInLog?.occurred_at
+      ? new Date(checkInLog.occurred_at).toLocaleTimeString('en-US', {
+          timeZone: 'Africa/Kampala',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        })
+      : null;
+
+    const checkOutTime = checkOutLog?.occurred_at
+      ? new Date(checkOutLog.occurred_at).toLocaleTimeString('en-US', {
+          timeZone: 'Africa/Kampala',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        })
+      : null;
+
+    return {
+      id: student.id,
+      full_name: student.full_name,
+      device_user_id: student.device_user_id,
+      has_checked_in: !!checkInLog,
+      check_in_time: checkInTime,
+      check_in_status: checkInLog ? (checkInLog.status as 'present' | 'late') : null,
+      has_checked_out: !!checkOutLog,
+      check_out_time: checkOutTime,
+    };
+  });
+
+  return { 
+    students: enrichedStudents,
+    activeWindowMode: getCurrentAttendanceWindowMode()
+  };
+}
 
 export async function submitClassAttendance(
   classId: string,
@@ -117,18 +199,17 @@ export async function submitClassAttendance(
   }
 
   const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  const { startIso, endIso } = getEatTodayRange(now);
 
-  // Check today's existing attendance logs for these students
+  // Check today's existing attendance logs for these students (ensure strictly ONE mark per time frame)
   let eligibleStudentIds = presentStudentIds;
   if (presentStudentIds.length > 0) {
     const { data: existingLogs } = await adminClient
       .from('attendance_logs')
       .select('person_id, attendance_type')
       .in('person_id', presentStudentIds)
-      .gte('occurred_at', startOfDay.toISOString())
-      .lte('occurred_at', endOfDay.toISOString());
+      .gte('occurred_at', startIso)
+      .lte('occurred_at', endIso);
 
     const alreadyRecordedSet = new Set(
       (existingLogs || [])
@@ -143,17 +224,22 @@ export async function submitClassAttendance(
     return {
       success: true,
       skipped: true,
-      message: `Selected student(s) already have a ${attendanceType === 'check_in' ? 'check-in' : 'check-out'} record for today.`
+      count: 0,
+      message: `Selected student(s) are already marked for ${attendanceType === 'check_in' ? 'Morning Check-In' : 'Evening Check-Out'} today.`
     };
   }
-  
+
+  const attendanceStatus: 'present' | 'late' = attendanceType === 'check_in'
+    ? getAttendanceStatusForCheckIn(now)
+    : 'present';
+
   const presentLogs = eligibleStudentIds.map(studentId => ({
     id: crypto.randomUUID(),
     school_id: cls.school_id,
     person_id: studentId,
     class_id_at_time: cls.id,
     class_name_at_time: cls.name,
-    status: 'present' as const,
+    status: attendanceStatus,
     attendance_type: attendanceType,
     marked_by: markedByStaffUserId,
     occurred_at: now.toISOString(),
@@ -222,35 +308,43 @@ export async function submitClassAttendance(
         }
         
 
-                        if (notificationsToSend.length > 0) {
-          const timestampStr = now.toLocaleTimeString('en-US', { 
-            hour: '2-digit', 
-            minute: '2-digit', 
-            hour12: true 
-          });
+        if (notificationsToSend.length > 0) {
+          const windowCheck = isWithinAttendanceSmsWindow(attendanceType, now);
 
-          for (const notif of notificationsToSend) {
-            let smsMessageText = `Dear Parent,`;
-            if (attendanceType === 'check_in') {
-              smsMessageText += ` your child ${notif.studentName} checked IN at school successfully at ${timestampStr}.`;
-            } else {
-              smsMessageText += ` your child ${notif.studentName} checked OUT of school and is heading home at ${timestampStr}.`;
+          if (!windowCheck.allowed) {
+            console.log(`[Class Manual Attendance] Recorded attendance for ${presentLogs.length} students, but SMS dispatch skipped: ${windowCheck.reason}`);
+          } else {
+            const timestampStr = windowCheck.eatTimeStr || now.toLocaleTimeString('en-US', { 
+              hour: '2-digit', 
+              minute: '2-digit', 
+              hour12: true 
+            });
+
+            for (const notif of notificationsToSend) {
+              let smsMessageText = `Dear Parent,`;
+              if (attendanceType === 'check_in') {
+                smsMessageText += attendanceStatus === 'late'
+                  ? ` your child ${notif.studentName} checked IN LATE at school at ${timestampStr}.`
+                  : ` your child ${notif.studentName} checked IN at school successfully at ${timestampStr}.`;
+              } else {
+                smsMessageText += ` your child ${notif.studentName} checked OUT of school and is heading home at ${timestampStr}.`;
+              }
+
+              // Queue the notification in school.notifications
+              await adminClient
+                .from('notifications')
+                .insert({
+                  school_id: cls.school_id,
+                  recipient_type: 'parent',
+                  recipient_id: notif.parentId,
+                  recipient_phone_snapshot: notif.phone,
+                  channel: 'sms',
+                  notification_type: 'attendance',
+                  status: 'pending',
+                  message: smsMessageText
+                });
             }
-
-            // Queue the notification in school.notifications
-            // The Supabase Edge Function will handle wallet deduction and Najiki dispatch
-            await adminClient
-              .from('notifications')
-              .insert({
-                school_id: cls.school_id,
-                recipient_type: 'parent',
-                recipient_id: notif.parentId,
-                recipient_phone_snapshot: notif.phone,
-                channel: 'sms',
-                notification_type: 'attendance',
-                status: 'pending',
-                message: smsMessageText
-              });
+            console.log(`[Class Manual Attendance] Queued ${notificationsToSend.length} SMS notifications for ${attendanceType} at ${timestampStr} EAT`);
           }
         }
       }
@@ -261,4 +355,3 @@ export async function submitClassAttendance(
   
   return { success: true, count: presentLogs.length };
 }
-

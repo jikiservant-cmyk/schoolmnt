@@ -2,18 +2,22 @@
 
 import { useState, useTransition } from 'react';
 import { addPersonAction } from './actions';
-import { Plus, HelpCircle, Check, Copy, ExternalLink, AlertTriangle, ArrowRight, ShieldAlert } from 'lucide-react';
+import { Plus, HelpCircle, Check, Copy, AlertTriangle, ArrowRight, X, UserPlus, Loader2 } from 'lucide-react';
 
 interface SchoolClass {
   id: string;
   name: string;
 }
 
-export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
+interface AddPersonFormProps {
+  classes: SchoolClass[];
+  onClose?: () => void;
+}
+
+export default function AddPersonForm({ classes, onClose }: AddPersonFormProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   
-  // Custom success state to hold returned DB payload (tokens, etc.)
   const [successData, setSuccessData] = useState<{
     role: 'student' | 'teacher';
     fullName: string;
@@ -43,7 +47,6 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
         } else if (res && res.success) {
           const resData = res.data as any;
           
-          // Capture and store success info from DB RPC payload
           setSuccessData({
             role: selectedRole as 'student' | 'teacher',
             fullName: formData.get('fullName') as string,
@@ -68,7 +71,7 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Render detailed success panel if a person was successfully registered
+  // Render detailed success panel if registered
   if (successData) {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const manualLink = successData.manualLinkToken 
@@ -76,28 +79,37 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
       : '';
 
     return (
-      <div className="bg-meridian-panel border border-meridian-border rounded-xl p-6 h-fit sticky top-6 animate-fade-in space-y-6">
-        <div className="pb-3 border-b border-meridian-border">
-          <div className="w-10 h-10 rounded-full bg-meridian-gold/15 border border-meridian-gold/30 flex items-center justify-center text-meridian-gold mb-3">
-            <Check className="w-5 h-5" />
+      <div className="bg-white border border-[#e7e7ea] rounded-[16px] p-6 animate-fade-in space-y-5">
+        <div className="flex items-center justify-between pb-3 border-b border-[#f1f1f4]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-full bg-[#edf9f0] border border-[#d2f4d9] flex items-center justify-center text-[#30b357]">
+              <Check className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-[#171719]">
+                Registration Complete
+              </h3>
+              <p className="text-[11px] text-[#85858a]">
+                Profile successfully added to school registry
+              </p>
+            </div>
           </div>
-          <h3 className="font-serif text-lg font-medium text-meridian-text-1">
-            Registry Complete
-          </h3>
-          <p className="text-[10px] font-mono uppercase tracking-wider text-meridian-text-3 mt-1">
-            Inscribed Successfully
-          </p>
+          {onClose && (
+            <button onClick={onClose} className="p-1 text-[#929297] hover:text-[#171719]">
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         <div className="space-y-4">
-          <div className="bg-meridian-panel-raised/50 border border-meridian-border/50 rounded-lg p-3.5 space-y-2">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-meridian-text-3">
+          <div className="bg-[#f7f7f9] border border-[#e7e7ea] rounded-[12px] p-4 space-y-1.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-[#929297]">
               Registered Profile
             </div>
-            <div className="font-serif text-base font-semibold text-meridian-text-1">
+            <div className="text-base font-bold text-[#171719]">
               {successData.fullName}
             </div>
-            <div className="inline-flex text-[10px] font-mono uppercase tracking-widest bg-meridian-deep px-2 py-0.5 rounded text-meridian-gold">
+            <div className="inline-flex text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#edf5ff] text-[#007aff]">
               {successData.role}
             </div>
           </div>
@@ -106,76 +118,66 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
           {successData.role === 'student' && (
             <div className="space-y-3">
               {successData.guardianLinked ? (
-                <div className="p-3 text-xs bg-meridian-gold/10 border border-meridian-gold/20 text-meridian-text-2 rounded-lg leading-relaxed flex gap-2">
-                  <Check className="w-4 h-4 text-meridian-gold shrink-0 mt-0.5" />
-                  <span>Guardian linked and daily attendance SMS alert routing configured.</span>
+                <div className="p-3 text-xs bg-[#edf9f0] border border-[#d2f4d9] text-[#2da94f] rounded-[10px] flex items-center gap-2">
+                  <Check className="w-4 h-4 shrink-0" />
+                  <span>Guardian linked! Daily attendance SMS notifications configured.</span>
                 </div>
               ) : (
-                <div className="p-3 text-xs bg-meridian-loss/10 border border-meridian-loss/20 text-meridian-loss rounded-lg leading-relaxed flex gap-2">
-                  <AlertTriangle className="w-4 h-4 text-meridian-loss shrink-0 mt-0.5" />
-                  <span>No guardian phone provided — attendance SMS won&apos;t be sent until one is linked.</span>
+                <div className="p-3 text-xs bg-[#fff5e7] border border-[#ffe0b2] text-[#e99500] rounded-[10px] flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>No guardian phone provided — SMS alerts won&apos;t be routed.</span>
                 </div>
               )}
             </div>
-          )}          {/* Teacher Specific Details (PIN display + Link) */}
+          )}
+
+          {/* Teacher Specific Details (PIN display + Link) */}
           {successData.role === 'teacher' && (
             <div className="space-y-4 animate-fade-in">
-              {/* Auto-Generated Teacher Attendance PIN */}
               {successData.teacherPin && (
-                <div className="p-4 bg-meridian-deep border border-meridian-gold/40 rounded-xl space-y-2 text-center shadow-sm">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-meridian-gold font-bold">
-                    Auto-Generated Attendance PIN / Passcode
+                <div className="p-4 bg-[#edf5ff] border border-[#d6e7ff] rounded-[12px] space-y-2 text-center">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-[#007aff]">
+                    Auto-Generated Attendance Passcode / PIN
                   </div>
                   <div className="flex items-center justify-center gap-2 pt-1">
-                    <div className="font-mono text-2xl font-bold tracking-widest text-meridian-gold bg-meridian-panel border border-meridian-border px-4 py-2 rounded-lg select-all">
+                    <div className="font-mono text-2xl font-bold tracking-widest text-[#007aff] bg-white border border-[#d6e7ff] px-4 py-2 rounded-lg select-all shadow-2xs">
                       {successData.teacherPin}
                     </div>
                     <button
                       type="button"
                       onClick={() => copyToClipboard(successData.teacherPin!)}
-                      className="p-2.5 bg-meridian-gold hover:bg-meridian-gold-dim text-white rounded-lg transition-colors flex items-center justify-center cursor-pointer shadow-sm"
-                      title="Copy Teacher PIN"
+                      className="p-2.5 bg-[#007aff] hover:bg-[#0062cc] text-white rounded-lg transition flex items-center justify-center cursor-pointer shadow-2xs"
+                      title="Copy Passcode"
                     >
                       {copied ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
                     </button>
                   </div>
-                  <p className="text-[10px] font-mono text-meridian-text-3 text-left leading-relaxed pt-1">
-                    • Give this unique passcode to <strong>{successData.fullName}</strong>. They will use it to log in and mark class attendance.<br />
-                    • Passcodes are system-generated (letters & numbers) and strictly unique across all teachers.
+                  <p className="text-[11px] text-[#5e5e63] text-left leading-relaxed pt-1">
+                    Give this passcode to <strong>{successData.fullName}</strong>. They will use it to log into the kiosk terminal or manual register.
                   </p>
                 </div>
               )}
 
               {manualLink && (
-                <div className="p-3 text-xs bg-meridian-deep border border-meridian-border text-meridian-text-2 rounded-lg leading-relaxed space-y-2">
-                  <div className="font-semibold text-meridian-gold flex items-center gap-1">
-                    <AlertTriangle className="w-3.5 h-3.5" />
+                <div className="p-3 text-xs bg-[#f7f7f9] border border-[#e7e7ea] text-[#5e5e63] rounded-[10px] space-y-2">
+                  <div className="font-semibold text-[#171719] flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 text-[#007aff]" />
                     Direct Attendance Token Link
                   </div>
-                  <p className="text-[11px] text-meridian-text-3">
-                    Share this unique token link with the teacher for quick manual attendance marking:
-                  </p>
-                  
-                  {/* Input box with copy action */}
                   <div className="flex gap-1.5 mt-2">
                     <input
                       type="text"
                       readOnly
                       value={manualLink}
-                      className="w-full bg-meridian-panel-raised border border-meridian-border text-[10.5px] font-mono px-2 py-1.5 rounded focus:outline-none text-meridian-text-2 truncate"
+                      className="w-full bg-white border border-[#e1e1e5] text-[11px] px-2.5 py-1.5 rounded-lg text-[#171719] truncate focus:outline-none"
                     />
                     <button
                       type="button"
                       onClick={() => copyToClipboard(manualLink)}
-                      className="px-2.5 py-1.5 bg-meridian-gold hover:bg-meridian-gold-dim text-white text-xs font-mono rounded transition flex items-center gap-1 cursor-pointer"
-                      title="Copy to Clipboard"
+                      className="px-3 py-1.5 bg-[#007aff] hover:bg-[#0062cc] text-white text-xs font-medium rounded-lg transition flex items-center gap-1 cursor-pointer"
                     >
                       {copied ? 'Copied' : <Copy className="w-3.5 h-3.5" />}
                     </button>
-                  </div>
-
-                  <div className="text-[9px] text-meridian-text-3 font-mono mt-1">
-                    Expires in 30 days. Link: {new Date(successData.manualLinkExpiresAt || '').toLocaleDateString()}
                   </div>
                 </div>
               )}
@@ -183,31 +185,49 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setSuccessData(null)}
-          className="w-full py-2 px-4 text-xs font-mono uppercase tracking-widest text-[#FBFAF3] bg-meridian-deep border border-meridian-border hover:bg-meridian-panel-raised rounded-lg transition duration-200 flex items-center justify-center gap-1.5 cursor-pointer"
-        >
-          <span>Register Another</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-2 pt-2">
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 h-9 border border-[#e1e1e5] hover:bg-[#f7f7f8] rounded-[9px] text-xs font-medium text-[#5e5e63] transition"
+            >
+              Close
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setSuccessData(null)}
+            className="flex-1 h-9 bg-[#171719] hover:bg-[#2c2c2e] text-white rounded-[9px] text-xs font-medium transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+          >
+            <span>Register Another</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-meridian-panel border border-meridian-border rounded-xl p-6 h-fit sticky top-6">
-      <div className="pb-3 border-b border-meridian-border mb-4">
-        <h3 className="font-serif text-lg font-medium text-meridian-text-1">
-          Inscribe New Person
-        </h3>
-        <p className="text-[10px] font-mono uppercase tracking-wider text-meridian-text-3 mt-1">
-          SmartSkoolz Registrar
-        </p>
+    <div className="bg-white border border-[#e7e7ea] rounded-[16px] p-6 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+      <div className="flex items-center justify-between pb-3 border-b border-[#f1f1f4] mb-4">
+        <div>
+          <h3 className="text-base font-bold text-[#171719]">
+            Register Person
+          </h3>
+          <p className="text-[11px] text-[#85858a] mt-0.5">
+            Add a new student or faculty member to the school directory
+          </p>
+        </div>
+        {onClose && (
+          <button onClick={onClose} className="p-1 text-[#929297] hover:text-[#171719]">
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {error && (
-        <div className="p-3 mb-4 text-xs font-mono text-meridian-loss bg-meridian-loss/15 rounded-lg border border-meridian-loss/30 animate-fade-in">
+        <div className="p-3 mb-4 text-xs text-[#ef4444] bg-[#fff0ef] rounded-[9px] border border-[#fbd1cf] animate-fade-in">
           {error}
         </div>
       )}
@@ -215,8 +235,8 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         
         {/* Full Name */}
-        <div className="space-y-1.5">
-          <label htmlFor="fullName" className="text-xs font-mono uppercase tracking-wider text-meridian-text-2">
+        <div>
+          <label htmlFor="fullName" className="block text-[11px] font-semibold text-[#171719] mb-1.5">
             Full Name
           </label>
           <input
@@ -226,14 +246,14 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
             required
             placeholder="e.g. Sandra Nakasenge"
             disabled={isPending}
-            className="w-full px-3 py-2 bg-meridian-panel-raised border border-meridian-border text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-meridian-gold focus:border-meridian-gold transition-colors disabled:opacity-50 text-meridian-text-1 placeholder-meridian-text-3/60"
+            className="w-full h-10 px-3 bg-white border border-[#e1e1e5] text-xs rounded-[9px] focus:outline-none focus:border-[#007aff] transition disabled:opacity-50 text-[#171719] placeholder:text-[#96969b]"
           />
         </div>
 
-        {/* Role Selector (Filtered to student and teacher to match RPC options) */}
-        <div className="space-y-1.5">
-          <label htmlFor="role" className="text-xs font-mono uppercase tracking-wider text-meridian-text-2">
-            Primary Academic Role
+        {/* Role Selector */}
+        <div>
+          <label htmlFor="role" className="block text-[11px] font-semibold text-[#171719] mb-1.5">
+            Academic Role
           </label>
           <select
             id="role"
@@ -242,7 +262,7 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
             value={selectedRole}
             onChange={(e) => setSelectedRole(e.target.value)}
             disabled={isPending}
-            className="w-full px-3 py-2 bg-meridian-panel-raised border border-meridian-border text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-meridian-gold focus:border-meridian-gold transition-colors disabled:opacity-50 text-meridian-text-1"
+            className="w-full h-10 px-3 bg-white border border-[#e1e1e5] text-xs rounded-[9px] focus:outline-none focus:border-[#007aff] transition disabled:opacity-50 text-[#171719]"
           >
             <option value="student">Student</option>
             <option value="teacher">Teacher / Faculty</option>
@@ -251,8 +271,8 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
 
         {/* Class Selector - only show if student */}
         {selectedRole === 'student' && (
-          <div className="space-y-1.5 animate-fade-in">
-            <label htmlFor="classId" className="text-xs font-mono uppercase tracking-wider text-meridian-text-2">
+          <div className="animate-fade-in">
+            <label htmlFor="classId" className="block text-[11px] font-semibold text-[#171719] mb-1.5">
               Class Assignment
             </label>
             <select
@@ -260,9 +280,9 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
               name="classId"
               required
               disabled={isPending}
-              className="w-full px-3 py-2 bg-meridian-panel-raised border border-meridian-border text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-meridian-gold focus:border-meridian-gold transition-colors disabled:opacity-50 text-meridian-text-1"
+              className="w-full h-10 px-3 bg-white border border-[#e1e1e5] text-xs rounded-[9px] focus:outline-none focus:border-[#007aff] transition disabled:opacity-50 text-[#171719]"
             >
-              <option value="">-- Select Class --</option>
+              <option value="">-- Select Class Stream --</option>
               {classes.map((cls) => (
                 <option key={cls.id} value={cls.id}>
                   {cls.name}
@@ -273,50 +293,32 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
         )}
 
         {/* Biometric Hardware Device User ID */}
-        <div className="space-y-1.5">
-          <label htmlFor="deviceUserId" className="text-xs font-mono uppercase tracking-wider text-meridian-text-2 flex items-center justify-between">
-            <span>Device User ID</span>
-            <span className="text-[9px] text-meridian-text-3 uppercase font-normal">(ZKTeco Hardware ID)</span>
-          </label>
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label htmlFor="deviceUserId" className="text-[11px] font-semibold text-[#171719]">
+              Device Hardware UID
+            </label>
+            <span className="text-[10px] text-[#929297]">Optional (ZKTeco ID)</span>
+          </div>
           <input
             id="deviceUserId"
             name="deviceUserId"
             type="text"
             placeholder="e.g. 101 or 1002"
             disabled={isPending}
-            className="w-full px-3 py-2 bg-meridian-panel-raised border border-meridian-border text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-meridian-gold focus:border-meridian-gold transition-colors disabled:opacity-50 text-meridian-text-1 placeholder-meridian-text-3/60 font-mono"
+            className="w-full h-10 px-3 bg-white border border-[#e1e1e5] text-xs font-mono rounded-[9px] focus:outline-none focus:border-[#007aff] transition disabled:opacity-50 text-[#171719] placeholder:text-[#96969b]"
           />
-          <p className="text-[9px] text-meridian-text-3 flex items-center gap-1">
-            <HelpCircle className="w-2.5 h-2.5 text-meridian-gold" />
-            Optional. Gotten from physical ZKTeco machine enrollment (Leave blank if not enrolled).
-          </p>
-        </div>
-
-        {/* Info box explaining distinction */}
-        <div className="bg-meridian-deep border border-meridian-border text-meridian-text-2 text-[11px] p-3 rounded-lg flex items-start gap-2">
-          <HelpCircle className="w-4 h-4 text-meridian-gold shrink-0 mt-0.5" />
-          <p className="leading-relaxed text-meridian-text-3">
-            {selectedRole === 'teacher' ? (
-              <>
-                For teachers, the system will <strong className="text-meridian-gold font-mono">auto-generate a unique 6-character Attendance PIN</strong> (e.g. T7K9M2) upon registration for portal attendance marking.
-              </>
-            ) : (
-              <>
-                Student attendance is logged via physical ZKTeco biometric clock-in or teacher class registers.
-              </>
-            )}
-          </p>
         </div>
 
         {/* Student Guardian Details */}
         {selectedRole === 'student' && (
-          <div className="space-y-4 border-t border-meridian-border/50 pt-4 animate-fade-in">
-            <h4 className="text-[11px] font-mono uppercase tracking-wider text-meridian-gold font-semibold">
-              Guardian Details (Required for SMS)
+          <div className="space-y-3.5 border-t border-[#f1f1f4] pt-4 animate-fade-in">
+            <h4 className="text-[11px] font-semibold uppercase tracking-wider text-[#007aff]">
+              Guardian Details (For SMS Alerts)
             </h4>
             
-            <div className="space-y-1.5">
-              <label htmlFor="guardianName" className="text-xs font-mono uppercase tracking-wider text-meridian-text-2">
+            <div>
+              <label htmlFor="guardianName" className="block text-[11px] font-semibold text-[#171719] mb-1.5">
                 Guardian Full Name
               </label>
               <input
@@ -325,12 +327,12 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
                 type="text"
                 placeholder="e.g. David Namubiru"
                 disabled={isPending}
-                className="w-full px-3 py-2 bg-meridian-panel-raised border border-meridian-border text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-meridian-gold focus:border-meridian-gold transition-colors disabled:opacity-50 text-meridian-text-1 placeholder-meridian-text-3/60"
+                className="w-full h-10 px-3 bg-white border border-[#e1e1e5] text-xs rounded-[9px] focus:outline-none focus:border-[#007aff] transition disabled:opacity-50 text-[#171719] placeholder:text-[#96969b]"
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="guardianPhone" className="text-xs font-mono uppercase tracking-wider text-meridian-text-2">
+            <div>
+              <label htmlFor="guardianPhone" className="block text-[11px] font-semibold text-[#171719] mb-1.5">
                 Guardian Phone Number
               </label>
               <input
@@ -339,19 +341,19 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
                 type="tel"
                 placeholder="e.g. +25677000000"
                 disabled={isPending}
-                className="w-full px-3 py-2 bg-meridian-panel-raised border border-meridian-border text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-meridian-gold focus:border-meridian-gold transition-colors disabled:opacity-50 text-meridian-text-1 placeholder-meridian-text-3/60"
+                className="w-full h-10 px-3 bg-white border border-[#e1e1e5] text-xs rounded-[9px] focus:outline-none focus:border-[#007aff] transition disabled:opacity-50 text-[#171719] placeholder:text-[#96969b]"
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="guardianRelationship" className="text-xs font-mono uppercase tracking-wider text-meridian-text-2">
+            <div>
+              <label htmlFor="guardianRelationship" className="block text-[11px] font-semibold text-[#171719] mb-1.5">
                 Relationship
               </label>
               <select
                 id="guardianRelationship"
                 name="guardianRelationship"
                 disabled={isPending}
-                className="w-full px-3 py-2 bg-meridian-panel-raised border border-meridian-border text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-meridian-gold focus:border-meridian-gold transition-colors disabled:opacity-50 text-meridian-text-1"
+                className="w-full h-10 px-3 bg-white border border-[#e1e1e5] text-xs rounded-[9px] focus:outline-none focus:border-[#007aff] transition disabled:opacity-50 text-[#171719]"
               >
                 <option value="guardian">Guardian</option>
                 <option value="father">Father</option>
@@ -363,13 +365,13 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
 
         {/* Teacher Details */}
         {selectedRole === 'teacher' && (
-          <div className="space-y-4 border-t border-meridian-border/50 pt-4 animate-fade-in">
-            <h4 className="text-[11px] font-mono uppercase tracking-wider text-meridian-gold font-semibold">
+          <div className="space-y-3.5 border-t border-[#f1f1f4] pt-4 animate-fade-in">
+            <h4 className="text-[11px] font-semibold uppercase tracking-wider text-[#007aff]">
               Teacher Credentials
             </h4>
 
-            <div className="space-y-1.5">
-              <label htmlFor="phone" className="text-xs font-mono uppercase tracking-wider text-meridian-text-2">
+            <div>
+              <label htmlFor="phone" className="block text-[11px] font-semibold text-[#171719] mb-1.5">
                 SMS Notification Phone
               </label>
               <input
@@ -378,23 +380,21 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
                 type="tel"
                 placeholder="e.g. +25677000000"
                 disabled={isPending}
-                className="w-full px-3 py-2 bg-meridian-panel-raised border border-meridian-border text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-meridian-gold focus:border-meridian-gold transition-colors disabled:opacity-50 text-meridian-text-1 placeholder-meridian-text-3/60"
+                className="w-full h-10 px-3 bg-white border border-[#e1e1e5] text-xs rounded-[9px] focus:outline-none focus:border-[#007aff] transition disabled:opacity-50 text-[#171719] placeholder:text-[#96969b]"
               />
             </div>
 
-            
-
-            {/* Teacher Authorized Classes (Checklist multi-select) */}
-            <div className="space-y-2 animate-fade-in">
-              <label className="text-xs font-mono uppercase tracking-wider text-meridian-text-2 block">
+            {/* Teacher Authorized Classes */}
+            <div className="space-y-2">
+              <label className="block text-[11px] font-semibold text-[#171719]">
                 Authorized Classes
               </label>
               {classes.length === 0 ? (
-                <p className="text-xs text-meridian-text-3 font-mono italic">No classes found in school.</p>
+                <p className="text-xs text-[#85858a] italic">No classes found in school.</p>
               ) : (
-                <div className="max-h-40 overflow-y-auto border border-meridian-border bg-meridian-panel-raised rounded-lg p-2.5 space-y-2">
+                <div className="max-h-36 overflow-y-auto border border-[#e1e1e5] bg-[#fafafa] rounded-[9px] p-2.5 space-y-2">
                   {classes.map((cls) => (
-                    <label key={cls.id} className="flex items-center gap-2 text-xs text-meridian-text-2 hover:text-meridian-text-1 cursor-pointer select-none">
+                    <label key={cls.id} className="flex items-center gap-2 text-xs text-[#171719] cursor-pointer select-none">
                       <input
                         type="checkbox"
                         checked={selectedTeacherClasses.includes(cls.id)}
@@ -405,7 +405,7 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
                             setSelectedTeacherClasses(prev => prev.filter(id => id !== cls.id));
                           }
                         }}
-                        className="rounded border-meridian-border text-meridian-gold focus:ring-meridian-gold"
+                        className="rounded border-[#e1e1e5] text-[#007aff] focus:ring-[#007aff]"
                       />
                       <span>{cls.name}</span>
                     </label>
@@ -417,14 +417,34 @@ export default function AddPersonForm({ classes }: { classes: SchoolClass[] }) {
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={isPending}
-          className="w-full mt-6 py-2 px-4 text-xs font-mono uppercase tracking-widest text-[#FBFAF3] bg-meridian-gold hover:bg-meridian-gold-dim border border-transparent rounded-lg transition duration-200 disabled:opacity-75 flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          {isPending ? 'Saving Record...' : 'Register Person'}
-        </button>
+        <div className="pt-2 flex items-center justify-end gap-2">
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-10 px-3.5 border border-[#e1e1e5] hover:bg-[#f7f7f8] rounded-[9px] text-xs text-[#5e5e63] font-medium transition cursor-pointer"
+            >
+              Cancel
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={isPending}
+            className="flex-1 sm:flex-none h-10 px-4 bg-[#007aff] hover:bg-[#0062cc] text-white rounded-[9px] text-xs font-medium transition disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+          >
+            {isPending ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <Plus className="w-3.5 h-3.5" />
+                <span>Register Person</span>
+              </>
+            )}
+          </button>
+        </div>
       </form>
     </div>
   );

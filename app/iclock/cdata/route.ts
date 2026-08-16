@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/utils/supabase/admin';
+import { isWithinAttendanceSmsWindow } from '@/lib/attendance-window';
 
 // 1. Initial Handshake / Config Pull from Device
 export async function GET(req: NextRequest) {
@@ -127,31 +128,38 @@ export async function POST(req: NextRequest) {
              });
              console.log(`[ZKTeco ADMS] Logged attendance for PIN ${pin} at ${datetimeStr}`);
 
-             // If this is a student, find their primary parent and queue an SMS
+             // If this is a student, check if within allowed EAT SMS dispatch window
              if (person.role === 'student') {
-               const { data: studentParent } = await supabase
-                 .from('student_parents')
-                 .select('parent_id, parents(phone)')
-                 .eq('student_id', (person as any).id)
-                 .eq('is_primary_contact', true)
-                 .maybeSingle();
-                 
-               if (studentParent?.parents?.phone) {
-                 const timeFormatted = new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                 const actionText = attendanceType === 'check_in' ? 'arrived safely at school' : 'clocked out from school';
-                 const smsMessageText = `${person.full_name} has ${actionText} at ${timeFormatted}.`;
+               const logDate = new Date(isoString);
+               const windowCheck = isWithinAttendanceSmsWindow(attendanceType, logDate);
 
-                 await supabase.from('notifications').insert({
-                   school_id: device.school_id,
-                   recipient_type: 'parent',
-                   recipient_id: studentParent.parent_id,
-                   recipient_phone_snapshot: studentParent.parents.phone,
-                   channel: 'sms',
-                   notification_type: 'attendance',
-                   status: 'pending',
-                   message: smsMessageText
-                 });
-                 console.log(`[ZKTeco ADMS] Queued SMS notification for ${person.full_name}`);
+               if (!windowCheck.allowed) {
+                 console.log(`[ZKTeco ADMS] Attendance recorded for ${person.full_name}, but SMS skipped: ${windowCheck.reason}`);
+               } else {
+                 const { data: studentParent } = await supabase
+                   .from('student_parents')
+                   .select('parent_id, parents(phone)')
+                   .eq('student_id', (person as any).id)
+                   .eq('is_primary_contact', true)
+                   .maybeSingle();
+                    
+                 if (studentParent?.parents?.phone) {
+                   const timeFormatted = windowCheck.eatTimeStr || new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                   const actionText = attendanceType === 'check_in' ? 'arrived safely at school' : 'clocked out from school';
+                   const smsMessageText = `${person.full_name} has ${actionText} at ${timeFormatted}.`;
+
+                   await supabase.from('notifications').insert({
+                     school_id: device.school_id,
+                     recipient_type: 'parent',
+                     recipient_id: studentParent.parent_id,
+                     recipient_phone_snapshot: studentParent.parents.phone,
+                     channel: 'sms',
+                     notification_type: 'attendance',
+                     status: 'pending',
+                     message: smsMessageText
+                   });
+                   console.log(`[ZKTeco ADMS] Queued SMS notification for ${person.full_name} (${attendanceType} at ${timeFormatted} EAT)`);
+                 }
                }
              }
            } else {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getAttendanceData, topUpBalance } from './actions';
 import { 
   Clock, 
@@ -12,6 +12,7 @@ import {
   MessageSquare, 
   Calendar, 
   User, 
+  Users,
   Send, 
   Search, 
   X,
@@ -20,14 +21,26 @@ import {
   ChevronRight,
   Smartphone,
   ShieldCheck,
-  CheckCircle2
+  CheckCircle2,
+  ExternalLink,
+  Copy,
+  Briefcase,
+  FileText,
+  GraduationCap
 } from 'lucide-react';
+import TeacherAttendanceManager from './TeacherAttendanceManager';
+import AttendanceReports from './AttendanceReports';
 
 export default function AttendancePage() {
   const [logs, setLogs] = useState<any[]>([]);
+  const [people, setPeople] = useState<any[]>([]);
+  const [classes, setClasses] = useState<any[]>([]);
   const [school, setSchool] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Active View Tab: 'students' | 'teachers' | 'reports'
+  const [activeTab, setActiveTab] = useState<'students' | 'teachers' | 'reports'>('students');
   
   // Wallet / Top Up state
   const [showTopUpModal, setShowTopUpModal] = useState(false);
@@ -37,10 +50,12 @@ export default function AttendancePage() {
   const [isToppingUp, setIsToppingUp] = useState(false);
   const [topUpMessage, setTopUpMessage] = useState('');
   const [initialBalance, setInitialBalance] = useState<number>(0);
+  const [copiedLink, setCopiedLink] = useState(false);
 
-  // Search & Filter state
+  // Search & Filter state for Students tab
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [classFilter, setClassFilter] = useState<string>('all');
 
   useEffect(() => {
     loadData();
@@ -76,11 +91,13 @@ export default function AttendancePage() {
         setError(data.error);
       } else {
         setLogs(data.logs || []);
+        setPeople(data.people || []);
+        setClasses(data.classes || []);
         setSchool(data.school || null);
         setError(null);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load data');
+      setError(err.message || 'Failed to load attendance data');
     } finally {
       setLoading(false);
     }
@@ -115,7 +132,7 @@ export default function AttendancePage() {
         setTopUpMessage(result.message || 'Prompt sent to your phone.');
         setTopUpStep('waiting');
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred during top up.');
     } finally {
       setIsToppingUp(false);
@@ -126,21 +143,45 @@ export default function AttendancePage() {
     setTopUpAmount(amount.toString());
   };
 
-  // Filter logs first
-  const filteredLogs = useMemo(() => {
-    return logs.filter(log => {
+  const copyTeacherLink = async () => {
+    const origin = window.location.origin;
+    const url = `${origin}/mark-attendance`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch {
+      console.error('Failed to copy link');
+    }
+  };
+
+  // Split people into students and teachers
+  const teachersList = useMemo(() => {
+    return people.filter(p => p.role === 'teacher' || p.role === 'admin');
+  }, [people]);
+
+  // Students attendance logs
+  const studentLogs = useMemo(() => {
+    return logs.filter(l => (l.people?.role || 'student') === 'student');
+  }, [logs]);
+
+  // Filter students logs
+  const filteredStudentLogs = useMemo(() => {
+    return studentLogs.filter(log => {
       const personName = log.people?.full_name || '';
       const matchesSearch = personName.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = statusFilter === 'all' || log.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      const personClassId = log.people?.class_id || log.class_id;
+      const matchesClass = classFilter === 'all' || personClassId === classFilter;
+      return matchesSearch && matchesStatus && matchesClass;
     });
-  }, [logs, searchTerm, statusFilter]);
+  }, [studentLogs, searchTerm, statusFilter, classFilter]);
 
-  // Group logs by date (YYYY-MM-DD)
-  const groupedLogs = useMemo(() => {
+  // Group student logs by date (YYYY-MM-DD)
+  const groupedStudentLogs = useMemo(() => {
     const map: { [key: string]: any[] } = {};
     
-    filteredLogs.forEach(log => {
+    filteredStudentLogs.forEach(log => {
       if (!log.occurred_at) return;
       const dateObj = new Date(log.occurred_at);
       const year = dateObj.getFullYear();
@@ -158,25 +199,27 @@ export default function AttendancePage() {
     const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     
     const yesterday = new Date();
-    yesterday.setDate(now.getDate() - 1);
+    yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
 
     return Object.keys(map)
       .sort((a, b) => b.localeCompare(a))
       .map(dateKey => {
         const dayLogs = map[dateKey];
-        const [y, m, d] = dateKey.split('-').map(Number);
-        const dateObj = new Date(y, m - 1, d);
+        const dateObj = new Date(dateKey + 'T00:00:00');
+        
+        let label = dateObj.toLocaleDateString('en-US', {
+          weekday: 'long',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        });
 
-        let label = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
         let badge = '';
-
         if (dateKey === todayKey) {
-          label = 'Today';
-          badge = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+          badge = 'Today';
         } else if (dateKey === yesterdayKey) {
-          label = 'Yesterday';
-          badge = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+          badge = 'Yesterday';
         }
 
         const presentCount = dayLogs.filter(l => l.status === 'present').length;
@@ -191,86 +234,83 @@ export default function AttendancePage() {
           lateCount
         };
       });
-  }, [filteredLogs]);
-
-  if (loading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="animate-spin text-meridian-gold">
-          <RefreshCw className="w-8 h-8" />
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-6">
-        <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl flex items-center gap-3">
-          <AlertCircle className="w-5 h-5" />
-          <p>{error}</p>
-        </div>
-      </div>
-    );
-  }
+  }, [filteredStudentLogs]);
 
   const currentBalance = school?.settings?.balance || 0;
   const approxSMSCount = Math.floor(currentBalance / 50);
 
+  if (loading && logs.length === 0) {
+    return (
+      <div className="pt-12 text-center flex flex-col items-center justify-center space-y-3">
+        <RefreshCw className="w-6 h-6 text-[#007aff] animate-spin" />
+        <p className="text-xs text-[#85858a]">Loading attendance tracking center...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-8 animate-fade-in">
+    <div className="space-y-6 pt-5 animate-fade-in">
       
-      {/* Top Header Row with Wallet Section on the Top Right */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-meridian-panel border border-meridian-border p-6 rounded-2xl shadow-xs">
+      {/* Top Header Row with Wallet Section */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-white border border-[#e7e7ea] p-6 rounded-[16px] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
         <div>
-          <div className="flex items-center gap-2 text-meridian-gold text-xs font-mono uppercase tracking-wider mb-1">
-            <Clock className="w-4 h-4" /> Attendance & SMS Tracking
+          <div className="text-[10px] font-semibold tracking-[0.14em] uppercase text-[#929297] mb-1">
+            ATTENDANCE MANAGEMENT & REPORTS
           </div>
-          <h1 className="font-serif text-3xl font-medium tracking-tight text-meridian-text-1">
-            Attendance Logs
+          <h1 className="text-[22px] sm:text-[25px] font-bold tracking-tight text-[#171719] leading-tight">
+            Attendance Tracking Center
           </h1>
-          <p className="text-sm text-meridian-text-3 mt-1 max-w-xl">
-            Real-time daily attendance check-ins and parent SMS dispatch logs.
+          <p className="text-[12px] text-[#85858a] mt-0.5 max-w-xl">
+            Monitor real-time student and faculty clock-ins, view entry times, and generate comprehensive attendance reports.
           </p>
-          <div className="mt-4 flex items-center gap-3">
+
+          <div className="mt-4 flex flex-wrap items-center gap-2.5">
             <a 
               href="/mark-attendance" 
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-3 py-1.5 border border-meridian-border bg-meridian-background rounded-md text-xs font-medium text-meridian-text-1 hover:bg-meridian-panel-raised transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#171719] hover:bg-[#2c2c2e] text-white rounded-[8px] text-[11px] font-medium transition shadow-2xs"
             >
-              <Smartphone className="w-3.5 h-3.5 text-meridian-text-3" />
-              Open Terminal
+              <Smartphone className="w-3.5 h-3.5 text-white/80" />
+              <span>Open Kiosk Terminal</span>
+              <ExternalLink className="w-3 h-3 opacity-60 ml-0.5" />
             </a>
+
             <button
-              onClick={() => {
-                const url = `${window.location.origin}/mark-attendance`;
-                navigator.clipboard.writeText(url);
-                alert("Terminal link copied to clipboard! You can now paste and send this to teachers.");
-              }}
-              className="inline-flex items-center gap-2 px-3 py-1.5 border border-meridian-gold/30 bg-meridian-gold/10 rounded-md text-xs font-medium text-meridian-gold hover:bg-meridian-gold/20 transition cursor-pointer"
+              type="button"
+              onClick={copyTeacherLink}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#e1e1e5] bg-white hover:bg-[#f7f7f8] rounded-[8px] text-[11px] font-medium text-[#171719] transition cursor-pointer"
             >
-              <Send className="w-3.5 h-3.5" />
-              Copy Link for Teachers
+              {copiedLink ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-[#30b357]" />
+                  <span className="text-[#30b357]">Copied Teacher Link</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 text-[#929297]" />
+                  <span>Copy Link for Teachers</span>
+                </>
+              )}
             </button>
           </div>
         </div>
 
         {/* Top-Right Wallet Section */}
-        <div className="bg-[#1E3226] border border-[#2e4738] text-white p-4 sm:p-5 rounded-xl shadow-md flex flex-wrap sm:flex-nowrap items-center justify-between gap-5 min-w-[300px]">
+        <div className="bg-[#f7f7f9] border border-[#e7e7ea] p-4 sm:p-5 rounded-[13px] flex flex-wrap sm:flex-nowrap items-center justify-between gap-5 min-w-[280px]">
           <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-xl bg-meridian-gold/20 border border-meridian-gold/30 flex items-center justify-center text-meridian-gold shrink-0">
-              <Wallet className="w-6 h-6" />
+            <div className="w-10 h-10 rounded-[10px] bg-[#edf9f0] border border-[#d2f4d9] flex items-center justify-center text-[#30b357] shrink-0">
+              <Wallet className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-widest text-meridian-border flex items-center gap-1">
-                <span>SMS Wallet Balance</span>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-[#929297]">
+                SMS Wallet Balance
               </div>
-              <div className="text-2xl font-bold tracking-tight text-white flex items-baseline gap-1.5 mt-0.5">
+              <div className="text-xl font-bold tracking-tight text-[#171719] flex items-baseline gap-1 mt-0.5">
                 <span>{currentBalance.toLocaleString()}</span>
-                <span className="text-xs font-medium text-meridian-border">UGX</span>
+                <span className="text-xs font-semibold text-[#85858a]">UGX</span>
               </div>
-              <div className="text-[11px] text-meridian-gold flex items-center gap-1 mt-0.5 font-mono">
+              <div className="text-[11px] text-[#30b357] font-medium flex items-center gap-1 mt-0.5">
                 <MessageSquare className="w-3 h-3" />
                 <span>~{approxSMSCount.toLocaleString()} SMS credits</span>
               </div>
@@ -278,248 +318,358 @@ export default function AttendancePage() {
           </div>
 
           <button
+            type="button"
             onClick={openTopUpModal}
-            className="w-full sm:w-auto px-4 py-2.5 bg-meridian-gold hover:bg-meridian-gold-dim text-white font-medium text-xs rounded-lg shadow-sm flex items-center justify-center gap-2 transition-all hover:scale-[1.02] cursor-pointer shrink-0"
+            className="w-full sm:w-auto px-3.5 py-2 bg-[#007aff] hover:bg-[#0062cc] text-white font-medium text-xs rounded-[9px] shadow-2xs flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>Top Up</span>
           </button>
         </div>
       </div>
 
-      {/* Filter and Search Controls */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-meridian-panel-raised/50 p-4 rounded-xl border border-meridian-border">
-        <div className="relative w-full sm:w-72">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-meridian-text-3" />
-          <input
-            type="text"
-            placeholder="Search student or staff..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs border border-meridian-border rounded-lg bg-meridian-background text-meridian-text-1 focus:outline-none focus:ring-1 focus:ring-meridian-gold"
-          />
-        </div>
-
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-          <div className="flex items-center gap-1.5 bg-meridian-background p-1 rounded-lg border border-meridian-border text-xs font-medium">
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1.5 rounded-md transition ${statusFilter === 'all' ? 'bg-meridian-text-1 text-white shadow-xs' : 'text-meridian-text-3 hover:text-meridian-text-1'}`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setStatusFilter('present')}
-              className={`px-3 py-1.5 rounded-md transition ${statusFilter === 'present' ? 'bg-meridian-gain text-white shadow-xs' : 'text-meridian-text-3 hover:text-meridian-text-1'}`}
-            >
-              Present
-            </button>
-            <button
-              onClick={() => setStatusFilter('late')}
-              className={`px-3 py-1.5 rounded-md transition ${statusFilter === 'late' ? 'bg-meridian-gold text-white shadow-xs' : 'text-meridian-text-3 hover:text-meridian-text-1'}`}
-            >
-              Late
-            </button>
-          </div>
+      {/* Main Mode Toggle Switcher: Students | Teachers | Generate Reports */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-2 border border-[#e7e7ea] rounded-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+        
+        <div className="flex items-center gap-1.5 w-full sm:w-auto bg-[#f5f5f7] p-1 rounded-[10px] border border-[#e7e7ea]">
+          <button
+            type="button"
+            onClick={() => setActiveTab('students')}
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-[8px] text-xs font-medium transition cursor-pointer flex items-center justify-center gap-2 ${
+              activeTab === 'students'
+                ? 'bg-white text-[#171719] shadow-2xs font-semibold'
+                : 'text-[#85858a] hover:text-[#171719]'
+            }`}
+          >
+            <GraduationCap className="w-4 h-4 text-[#007aff]" />
+            <span>Students Attendance</span>
+            <span className="text-[10px] px-1.5 py-0.2 bg-[#edf5ff] text-[#007aff] rounded-full font-bold">
+              {studentLogs.length}
+            </span>
+          </button>
 
           <button
-            onClick={loadData}
-            className="p-2 border border-meridian-border rounded-lg bg-meridian-background hover:bg-meridian-panel text-meridian-text-2 transition flex items-center justify-center cursor-pointer"
-            title="Refresh logs"
+            type="button"
+            onClick={() => setActiveTab('teachers')}
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-[8px] text-xs font-medium transition cursor-pointer flex items-center justify-center gap-2 ${
+              activeTab === 'teachers'
+                ? 'bg-white text-[#171719] shadow-2xs font-semibold'
+                : 'text-[#85858a] hover:text-[#171719]'
+            }`}
           >
-            <RefreshCw className="w-4 h-4" />
+            <Briefcase className="w-4 h-4 text-[#30b357]" />
+            <span>Teachers Attendance</span>
+            <span className="text-[10px] px-1.5 py-0.2 bg-[#edf9f0] text-[#30b357] rounded-full font-bold">
+              {teachersList.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('reports')}
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-[8px] text-xs font-medium transition cursor-pointer flex items-center justify-center gap-2 ${
+              activeTab === 'reports'
+                ? 'bg-white text-[#171719] shadow-2xs font-semibold'
+                : 'text-[#85858a] hover:text-[#171719]'
+            }`}
+          >
+            <FileText className="w-4 h-4 text-[#f5a30a]" />
+            <span>Generate Reports</span>
+            <span className="text-[10px] px-1.5 py-0.2 bg-[#fff5e7] text-[#f5a30a] rounded-full font-bold">
+              PDF & Excel
+            </span>
           </button>
         </div>
+
+        <div className="text-xs text-[#85858a] px-2 font-medium hidden md:block">
+          {activeTab === 'students' && 'Showing student clock-in history and parent notifications'}
+          {activeTab === 'teachers' && 'Showing faculty entry logs and arrival times'}
+          {activeTab === 'reports' && 'Class registers, custom date reports, PDF & Excel export'}
+        </div>
+
       </div>
 
-      {/* Logs Grouped by Date */}
-      <div className="space-y-6">
-        {groupedLogs.length > 0 ? (
-          groupedLogs.map((group) => (
-            <div key={group.dateKey} className="bg-meridian-panel border border-meridian-border rounded-xl shadow-xs overflow-hidden">
-              {/* Date Header */}
-              <div className="px-6 py-4 bg-meridian-panel-raised border-b border-meridian-border flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <Calendar className="w-4 h-4 text-meridian-text-1" />
-                  <h2 className="font-serif font-medium text-lg text-meridian-text-1">
-                    {group.label}
-                  </h2>
-                  {group.badge && (
-                    <span className="px-2.5 py-0.5 text-xs font-mono font-medium bg-meridian-gold/20 text-meridian-text-1 border border-meridian-gold/30 rounded-full">
-                      {group.badge}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3 text-xs font-mono">
-                  <span className="px-2.5 py-1 bg-meridian-background rounded-md border border-meridian-border text-meridian-text-2">
-                    Total: <strong className="text-meridian-text-1">{group.logs.length}</strong>
-                  </span>
-                  <span className="px-2.5 py-1 bg-meridian-gain/10 border border-meridian-gain/20 text-meridian-gain rounded-md">
-                    Present: <strong>{group.presentCount}</strong>
-                  </span>
-                  {group.lateCount > 0 && (
-                    <span className="px-2.5 py-1 bg-meridian-gold/10 border border-meridian-gold/20 text-meridian-gold rounded-md">
-                      Late: <strong>{group.lateCount}</strong>
-                    </span>
-                  )}
-                </div>
+      {/* TAB 1: STUDENTS ATTENDANCE VIEW */}
+      {activeTab === 'students' && (
+        <div className="space-y-6">
+          {/* Filter and Search Controls */}
+          <div className="bg-white border border-[#e7e7ea] p-4 rounded-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.02)] flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row items-center gap-2.5 flex-1">
+              <div className="relative w-full sm:w-64">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#929297]" />
+                <input
+                  type="text"
+                  placeholder="Search student by name..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full h-9 pl-8 pr-3 text-xs border border-[#e1e1e5] rounded-[9px] bg-[#fafafa] focus:bg-white text-[#171719] placeholder:text-[#96969b] focus:outline-none focus:border-[#007aff] transition"
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#929297] hover:text-[#171719]"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
-              {/* Day Logs Content */}
-              <div className="p-4 sm:p-6">
-                {/* Mobile Card View */}
-                <div className="space-y-3 md:hidden">
-                  {group.logs.map((log) => {
-                    const logTime = log.occurred_at 
-                      ? new Date(log.occurred_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-                      : '—';
-
-                    return (
-                      <div key={log.id} className="p-3.5 rounded-xl border border-meridian-border bg-meridian-panel-raised/40 space-y-2.5">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-full bg-meridian-border/50 flex items-center justify-center text-meridian-text-1 font-medium text-xs shrink-0">
-                              <User className="w-4 h-4 text-meridian-text-2" />
-                            </div>
-                            <div>
-                              <div className="font-medium text-meridian-text-1 text-sm">{log.people?.full_name || 'Unknown'}</div>
-                              <div className="text-[10px] uppercase font-mono text-meridian-text-3">{log.people?.role || 'Student'}</div>
-                            </div>
-                          </div>
-                          
-                          <span className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider rounded-md border inline-flex items-center gap-1 shrink-0 ${
-                            log.status === 'present' 
-                              ? 'bg-meridian-gain/10 border-meridian-gain/30 text-meridian-gain' 
-                              : log.status === 'late'
-                              ? 'bg-meridian-gold/10 border-meridian-gold/30 text-meridian-gold'
-                              : 'bg-meridian-loss/10 border-meridian-loss/30 text-meridian-loss'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${
-                              log.status === 'present' ? 'bg-meridian-gain' : log.status === 'late' ? 'bg-meridian-gold' : 'bg-meridian-loss'
-                            }`}></span>
-                            {log.status}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center justify-between text-xs font-mono pt-2 border-t border-meridian-border/50 text-meridian-text-2">
-                          <span className="text-[11px] text-meridian-text-3">{(log.attendance_type || 'check_in').replace(/_/g, ' ').toUpperCase()}</span>
-                          <span className="text-meridian-text-1 font-semibold" suppressHydrationWarning>{logTime}</span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 text-[11px] font-mono text-meridian-gain">
-                          <Send className="w-3 h-3 text-meridian-gain" />
-                          <span>SMS Sent to Parent</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Desktop Table View */}
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-left text-sm text-meridian-text-2">
-                    <thead className="bg-meridian-background/50 text-meridian-text-3 text-[11px] uppercase font-mono tracking-wider border-b border-meridian-border">
-                      <tr>
-                        <th className="px-6 py-3">Person</th>
-                        <th className="px-6 py-3">Time</th>
-                        <th className="px-6 py-3">Status</th>
-                        <th className="px-6 py-3">Type</th>
-                        <th className="px-6 py-3">Parent Notification</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-meridian-border/60">
-                      {group.logs.map((log) => {
-                        const logTime = log.occurred_at 
-                          ? new Date(log.occurred_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-                          : '—';
-
-                        return (
-                          <tr key={log.id} className="hover:bg-meridian-panel-raised/80 transition">
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-full bg-meridian-border/50 flex items-center justify-center text-meridian-text-1 font-medium text-xs">
-                                  <User className="w-4 h-4 text-meridian-text-2" />
-                                </div>
-                                <div>
-                                  <div className="font-medium text-meridian-text-1">{log.people?.full_name || 'Unknown'}</div>
-                                  <div className="text-[10px] uppercase font-mono text-meridian-text-3">{log.people?.role || 'Student'}</div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-meridian-text-1" suppressHydrationWarning>
-                              {logTime}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider rounded-md border inline-flex items-center gap-1 ${
-                                log.status === 'present' 
-                                  ? 'bg-meridian-gain/10 border-meridian-gain/30 text-meridian-gain' 
-                                  : log.status === 'late'
-                                  ? 'bg-meridian-gold/10 border-meridian-gold/30 text-meridian-gold'
-                                  : 'bg-meridian-loss/10 border-meridian-loss/30 text-meridian-loss'
-                              }`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${
-                                  log.status === 'present' ? 'bg-meridian-gain' : log.status === 'late' ? 'bg-meridian-gold' : 'bg-meridian-loss'
-                                }`}></span>
-                                {log.status}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-xs font-mono uppercase text-meridian-text-2">
-                              {(log.attendance_type || 'check_in').replace(/_/g, ' ')}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-1.5 text-xs font-mono text-meridian-gain">
-                                <Send className="w-3.5 h-3.5 text-meridian-gain" />
-                                <span>SMS Sent to Parent</span>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+              {/* Class Filter Dropdown */}
+              <div className="w-full sm:w-auto">
+                <select
+                  value={classFilter}
+                  onChange={(e) => setClassFilter(e.target.value)}
+                  className="w-full sm:w-auto h-9 px-3 text-xs border border-[#e1e1e5] rounded-[9px] bg-white text-[#171719] focus:outline-none focus:border-[#007aff] transition font-medium cursor-pointer"
+                >
+                  <option value="all">All Classes ({classes.length})</option>
+                  {classes.map(cls => (
+                    <option key={cls.id} value={cls.id}>
+                      Class: {cls.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-          ))
-        ) : (
-          <div className="bg-meridian-panel border border-meridian-border rounded-xl p-12 text-center space-y-3">
-            <Clock className="w-10 h-10 text-meridian-text-3 mx-auto" />
-            <h3 className="font-serif text-lg text-meridian-text-1">No attendance logs found</h3>
-            <p className="text-xs text-meridian-text-3 max-w-sm mx-auto">
-              {searchTerm || statusFilter !== 'all' 
-                ? 'Try adjusting your search or filters to see attendance records.'
-                : 'Clock-in entries recorded by school staff will appear here grouped by day.'}
-            </p>
+
+            <div className="flex items-center gap-2 justify-between lg:justify-end">
+              <div className="flex items-center gap-1 bg-[#f5f5f7] p-1 rounded-[9px] border border-[#e7e7ea] text-xs font-medium">
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('all')}
+                  className={`px-3 py-1 rounded-[6px] transition text-xs font-medium cursor-pointer ${
+                    statusFilter === 'all'
+                      ? 'bg-white text-[#171719] shadow-2xs font-semibold'
+                      : 'text-[#85858a] hover:text-[#171719]'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('present')}
+                  className={`px-3 py-1 rounded-[6px] transition text-xs font-medium cursor-pointer ${
+                    statusFilter === 'present'
+                      ? 'bg-white text-[#30b357] shadow-2xs font-semibold'
+                      : 'text-[#85858a] hover:text-[#171719]'
+                  }`}
+                >
+                  Present
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('late')}
+                  className={`px-3 py-1 rounded-[6px] transition text-xs font-medium cursor-pointer ${
+                    statusFilter === 'late'
+                      ? 'bg-white text-[#f5a30a] shadow-2xs font-semibold'
+                      : 'text-[#85858a] hover:text-[#171719]'
+                  }`}
+                >
+                  Late
+                </button>
+              </div>
+
+              {(searchTerm || statusFilter !== 'all' || classFilter !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setStatusFilter('all');
+                    setClassFilter('all');
+                  }}
+                  className="h-9 px-2.5 border border-[#e1e1e5] rounded-[9px] bg-white hover:bg-[#f7f7f8] text-[#85858a] hover:text-[#171719] text-xs transition cursor-pointer"
+                  title="Reset all filters"
+                >
+                  Reset
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={loadData}
+                className="w-9 h-9 border border-[#e1e1e5] rounded-[9px] bg-white hover:bg-[#f7f7f8] text-[#5e5e63] transition flex items-center justify-center cursor-pointer shadow-2xs"
+                title="Refresh student logs"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* Logs Grouped by Date */}
+          <div className="space-y-5">
+            {groupedStudentLogs.length > 0 ? (
+              groupedStudentLogs.map((group) => (
+                <div 
+                  key={group.dateKey} 
+                  className="bg-white border border-[#e7e7ea] rounded-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.02)] overflow-hidden"
+                >
+                  {/* Date Header */}
+                  <div className="px-5 py-3.5 bg-[#fafafa] border-b border-[#f1f1f4] flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-[#85858a]" />
+                      <h2 className="font-bold text-xs text-[#171719]">
+                        {group.label}
+                      </h2>
+                      {group.badge && (
+                        <span className="px-2 py-0.5 text-[10px] font-semibold bg-[#edf5ff] text-[#007aff] rounded-full">
+                          {group.badge}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="px-2.5 py-0.5 bg-white rounded-md border border-[#e7e7ea] text-[#85858a] text-[11px]">
+                        Total: <strong className="text-[#171719]">{group.logs.length}</strong>
+                      </span>
+                      <span className="px-2.5 py-0.5 bg-[#edf9f0] border border-[#d2f4d9] text-[#2da94f] rounded-md text-[11px]">
+                        Present: <strong>{group.presentCount}</strong>
+                      </span>
+                      {group.lateCount > 0 && (
+                        <span className="px-2.5 py-0.5 bg-[#fff5e7] border border-[#ffe0b2] text-[#f5a30a] rounded-md text-[11px]">
+                          Late: <strong>{group.lateCount}</strong>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Table Container with Horizontal Scrolling */}
+                  <div className="w-full overflow-x-auto">
+                    <table className="w-full min-w-[760px] text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-[#f1f1f4] text-[10px] uppercase font-semibold tracking-wider text-[#929297]">
+                          <th className="py-3 px-5 whitespace-nowrap">Student</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Arrival Time</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Status</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Check-In Type</th>
+                          <th className="py-3 px-5 whitespace-nowrap text-right">Parent SMS Notification</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#f7f7f9]">
+                        {group.logs.map((log) => {
+                          const logTime = log.occurred_at 
+                            ? new Date(log.occurred_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                            : '—';
+                          
+                          const personName = log.people?.full_name || 'Student';
+                          const initials = personName
+                            .split(' ')
+                            .map((n: string) => n[0])
+                            .join('')
+                            .substring(0, 2)
+                            .toUpperCase();
+
+                          return (
+                            <tr key={log.id} className="hover:bg-[#fbfbfd] transition">
+                              <td className="py-3 px-5 whitespace-nowrap">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-7 h-7 rounded-full bg-[#f0f0f3] text-[#555] flex items-center justify-center font-bold text-[10px]">
+                                    {initials}
+                                  </div>
+                                  <div>
+                                    <div className="font-semibold text-[#171719] text-xs">{personName}</div>
+                                    <div className="text-[10px] text-[#929297]">
+                                      {log.people?.classes?.name || 'Class Student'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              
+                              <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-[#171719]" suppressHydrationWarning>
+                                {logTime}
+                              </td>
+                              
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium ${
+                                  log.status === 'present'
+                                    ? 'bg-[#edf9f0] text-[#2da94f]'
+                                    : log.status === 'late'
+                                    ? 'bg-[#fff5e7] text-[#f5a30a]'
+                                    : 'bg-[#fff0ef] text-[#ef4444]'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${
+                                    log.status === 'present' ? 'bg-[#30b357]' : log.status === 'late' ? 'bg-[#f5a30a]' : 'bg-[#ef4444]'
+                                  }`} />
+                                  <span className="capitalize">{log.status}</span>
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-4 whitespace-nowrap text-xs text-[#5e5e63]">
+                                <span className="capitalize">{(log.attendance_type || 'check_in').replace(/_/g, ' ')}</span>
+                              </td>
+
+                              <td className="py-3 px-5 whitespace-nowrap text-right">
+                                <div className="inline-flex items-center gap-1.5 text-xs text-[#2da94f] font-medium bg-[#edf9f0] px-2.5 py-0.5 rounded-full">
+                                  <Send className="w-3 h-3 text-[#30b357]" />
+                                  <span>SMS Delivered</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="bg-white border border-[#e7e7ea] rounded-[14px] p-12 text-center shadow-[0_1px_2px_rgba(0,0,0,0.02)] space-y-2">
+                <Clock className="w-8 h-8 text-[#929297] mx-auto" />
+                <h3 className="text-sm font-bold text-[#171719]">No student attendance logs found</h3>
+                <p className="text-xs text-[#85858a] max-w-sm mx-auto">
+                  {searchTerm || statusFilter !== 'all' 
+                    ? 'Try adjusting your search query or status filter.'
+                    : 'Clock-in entries recorded via biometric terminal or teacher registers will appear here grouped by day.'}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: TEACHERS ATTENDANCE VIEW */}
+      {activeTab === 'teachers' && (
+        <TeacherAttendanceManager 
+          logs={logs}
+          teachers={teachersList}
+          onRefresh={loadData}
+        />
+      )}
+
+      {/* TAB 3: GENERATE REPORTS */}
+      {activeTab === 'reports' && (
+        <AttendanceReports 
+          logs={logs}
+          people={people}
+          classes={classes}
+          schoolName={school?.name || 'Na\'Jiki Academy'}
+        />
+      )}
 
       {/* Top Up Modal */}
       {showTopUpModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-meridian-panel border border-meridian-border rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 relative animate-fade-in">
+        <div className="fixed inset-0 z-50 bg-[#171719]/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#e7e7ea] rounded-[16px] max-w-md w-full p-6 shadow-2xl space-y-4 relative animate-fade-in">
             {/* Modal Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-meridian-border">
+            <div className="flex items-center justify-between pb-3 border-b border-[#f1f1f4]">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-lg bg-meridian-gold/20 flex items-center justify-center text-meridian-gold">
+                <div className="w-9 h-9 rounded-full bg-[#edf5ff] border border-[#d6e7ff] flex items-center justify-center text-[#007aff]">
                   {topUpStep === 'waiting' ? (
                     <Smartphone className="w-5 h-5 animate-pulse" />
                   ) : topUpStep === 'success' ? (
-                    <CheckCircle2 className="w-5 h-5 text-meridian-gain" />
+                    <CheckCircle2 className="w-5 h-5 text-[#30b357]" />
                   ) : (
                     <CreditCard className="w-5 h-5" />
                   )}
                 </div>
                 <div>
-                  <h3 className="font-serif text-lg font-medium text-meridian-text-1">
+                  <h3 className="text-base font-bold text-[#171719]">
                     {topUpStep === 'waiting' 
                       ? 'Enter PIN on Mobile Phone' 
                       : topUpStep === 'success' 
                         ? 'Payment Approved' 
                         : 'Top Up SMS Balance'}
                   </h3>
-                  <p className="text-xs text-meridian-text-3">
+                  <p className="text-[11px] text-[#85858a]">
                     {topUpStep === 'waiting'
                       ? 'Authorization prompt dispatched to your device'
                       : topUpStep === 'success'
@@ -530,29 +680,30 @@ export default function AttendancePage() {
               </div>
 
               <button
+                type="button"
                 onClick={() => setShowTopUpModal(false)}
-                className="p-1 rounded-lg text-meridian-text-3 hover:text-meridian-text-1 hover:bg-meridian-border/50 transition cursor-pointer"
+                className="p-1 rounded-lg text-[#929297] hover:text-[#171719] transition cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Current Balance Summary Banner */}
-            <div className="bg-[#1E3226] text-white p-4 rounded-xl border border-[#2e4738] flex items-center justify-between">
+            <div className="bg-[#f7f7f9] text-[#171719] p-3.5 rounded-[11px] border border-[#e7e7ea] flex items-center justify-between">
               <div>
-                <div className="text-[10px] font-mono text-meridian-border uppercase">Current Available Balance</div>
-                <div className="text-xl font-bold font-mono text-white mt-0.5">
-                  {currentBalance.toLocaleString()} <span className="text-xs font-normal text-meridian-border">UGX</span>
+                <div className="text-[10px] font-semibold text-[#85858a] uppercase">Current Balance</div>
+                <div className="text-base font-bold font-mono text-[#171719]">
+                  {currentBalance.toLocaleString()} <span className="text-xs font-normal text-[#85858a]">UGX</span>
                 </div>
               </div>
-              <div className="text-right text-xs font-mono text-meridian-gold">
+              <div className="text-right text-xs font-medium text-[#30b357]">
                 ~{approxSMSCount.toLocaleString()} SMS
               </div>
             </div>
 
             {/* ERROR ALERT IF ANY */}
             {error && (
-              <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded-xl flex items-center gap-2">
+              <div className="bg-[#fff0ef] border border-[#fbd1cf] text-[#ef4444] text-xs p-3 rounded-lg flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -562,7 +713,7 @@ export default function AttendancePage() {
             {topUpStep === 'form' && (
               <form onSubmit={handleTopUpSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-meridian-text-2 uppercase tracking-wider mb-2">
+                  <label className="block text-[11px] font-semibold text-[#171719] mb-1.5">
                     Select Quick Amount (UGX)
                   </label>
                   <div className="grid grid-cols-3 gap-2">
@@ -571,10 +722,10 @@ export default function AttendancePage() {
                         key={amount}
                         type="button"
                         onClick={() => handleQuickAmount(amount)}
-                        className={`py-2 px-3 text-xs font-mono rounded-lg border transition cursor-pointer ${
+                        className={`py-2 px-2 text-xs font-medium rounded-[8px] border transition cursor-pointer ${
                           topUpAmount === amount.toString()
-                            ? 'bg-meridian-gold text-white border-meridian-gold font-bold shadow-xs'
-                            : 'bg-meridian-background border-meridian-border text-meridian-text-1 hover:border-meridian-gold'
+                            ? 'bg-[#007aff] text-white border-[#007aff] font-bold shadow-2xs'
+                            : 'bg-white border-[#e1e1e5] text-[#171719] hover:border-[#cfcfd4]'
                         }`}
                       >
                         {amount.toLocaleString()}
@@ -584,13 +735,10 @@ export default function AttendancePage() {
                 </div>
 
                 <div>
-                  <label htmlFor="topup-amount" className="block text-xs font-medium text-meridian-text-2 uppercase tracking-wider mb-2">
+                  <label htmlFor="topup-amount" className="block text-[11px] font-semibold text-[#171719] mb-1.5">
                     Custom Amount (UGX)
                   </label>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                      <span className="text-meridian-text-3 text-xs font-mono">UGX</span>
-                    </div>
                     <input
                       type="number"
                       id="topup-amount"
@@ -599,44 +747,41 @@ export default function AttendancePage() {
                       required
                       value={topUpAmount}
                       onChange={(e) => setTopUpAmount(e.target.value)}
-                      className="block w-full pl-14 pr-3 py-2.5 border border-meridian-border rounded-xl bg-meridian-background text-meridian-text-1 text-sm font-mono focus:ring-1 focus:ring-meridian-gold focus:border-meridian-gold transition"
+                      className="block w-full px-3 py-2 border border-[#e1e1e5] rounded-[9px] bg-white text-[#171719] text-xs font-mono focus:border-[#007aff] focus:outline-none transition"
                       placeholder="50000"
                     />
                   </div>
-                  <p className="text-[11px] text-meridian-text-3 mt-1.5 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-meridian-gold" />
+                  <p className="text-[10px] text-[#85858a] mt-1 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-[#f5a30a]" />
                     Provides approx {Math.floor((parseInt(topUpAmount) || 0) / 50).toLocaleString()} SMS messages to parents.
                   </p>
                 </div>
 
                 <div>
-                  <label htmlFor="phone-number" className="block text-xs font-medium text-meridian-text-2 uppercase tracking-wider mb-2">
+                  <label htmlFor="phone-number" className="block text-[11px] font-semibold text-[#171719] mb-1.5">
                     Mobile Money Phone Number
                   </label>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                      <span className="text-meridian-text-3 text-xs font-mono">+256</span>
-                    </div>
                     <input
                       type="tel"
                       id="phone-number"
                       required
                       value={phoneNumber}
                       onChange={(e) => setPhoneNumber(e.target.value)}
-                      className="block w-full pl-14 pr-3 py-2.5 border border-meridian-border rounded-xl bg-meridian-background text-meridian-text-1 text-sm font-mono focus:ring-1 focus:ring-meridian-gold focus:border-meridian-gold transition"
-                      placeholder="700000000"
+                      className="block w-full px-3 py-2 border border-[#e1e1e5] rounded-[9px] bg-white text-[#171719] text-xs font-mono focus:border-[#007aff] focus:outline-none transition"
+                      placeholder="0770000000"
                     />
                   </div>
-                  <p className="text-[11px] text-meridian-text-3 mt-1.5 flex items-center gap-1">
-                    You will receive a Mobile Money USSD prompt on your phone to complete payment.
+                  <p className="text-[10px] text-[#85858a] mt-1">
+                    You will receive a Mobile Money PIN prompt on your phone to complete payment.
                   </p>
                 </div>
 
-                <div className="pt-2 flex items-center gap-3">
+                <div className="pt-2 flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setShowTopUpModal(false)}
-                    className="flex-1 py-2.5 border border-meridian-border rounded-xl text-xs font-medium text-meridian-text-2 hover:bg-meridian-panel-raised transition cursor-pointer"
+                    className="flex-1 h-9 border border-[#e1e1e5] rounded-[8px] text-xs font-medium text-[#5e5e63] hover:bg-[#f7f7f8] transition cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -644,7 +789,7 @@ export default function AttendancePage() {
                   <button
                     type="submit"
                     disabled={isToppingUp}
-                    className="flex-1 py-2.5 bg-meridian-gold hover:bg-meridian-gold-dim text-white rounded-xl text-xs font-medium shadow-sm transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                    className="flex-1 h-9 bg-[#007aff] hover:bg-[#0062cc] text-white rounded-[8px] text-xs font-medium shadow-2xs transition flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
                   >
                     {isToppingUp ? (
                       <>
@@ -662,51 +807,44 @@ export default function AttendancePage() {
               </form>
             )}
 
-            {/* STEP 2: WAITING FOR MOBILE MONEY PIN PROMPT */}
+            {/* STEP 2: WAITING */}
             {topUpStep === 'waiting' && (
               <div className="space-y-4 py-2 animate-fade-in text-center">
-                {/* Visual Phone Radar Icon */}
-                <div className="relative flex items-center justify-center py-3">
-                  <div className="absolute w-20 h-20 bg-meridian-gold/20 rounded-full animate-ping" />
-                  <div className="relative w-16 h-16 rounded-full bg-meridian-gold/10 border border-meridian-gold flex items-center justify-center text-meridian-gold shadow-lg">
-                    <Smartphone className="w-8 h-8 animate-bounce" />
-                  </div>
+                <div className="w-14 h-14 rounded-full bg-[#edf5ff] border border-[#d6e7ff] flex items-center justify-center text-[#007aff] mx-auto shadow-2xs">
+                  <Smartphone className="w-6 h-6 animate-pulse" />
                 </div>
 
                 <div className="space-y-1">
-                  <h4 className="font-serif text-base font-semibold text-meridian-text-1">
+                  <h4 className="text-sm font-bold text-[#171719]">
                     Check Phone: Enter Mobile Money PIN
                   </h4>
-                  <p className="text-xs text-meridian-text-2 max-w-xs mx-auto leading-relaxed">
-                    A payment prompt of <strong className="text-meridian-gold font-mono">{parseInt(topUpAmount).toLocaleString()} UGX</strong> has been sent to <strong className="text-meridian-text-1 font-mono">+256 {phoneNumber}</strong>.
+                  <p className="text-xs text-[#5e5e63] max-w-xs mx-auto leading-relaxed">
+                    A payment prompt of <strong className="text-[#171719] font-mono">{parseInt(topUpAmount).toLocaleString()} UGX</strong> has been sent to <strong className="text-[#171719] font-mono">{phoneNumber}</strong>.
                   </p>
                 </div>
 
-                {/* Instructions Box */}
-                <div className="bg-meridian-background/80 border border-meridian-border rounded-xl p-3.5 text-left text-xs space-y-2 text-meridian-text-2">
-                  <div className="font-medium text-meridian-text-1 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-meridian-gold" />
+                <div className="bg-[#f7f7f9] border border-[#e7e7ea] rounded-[10px] p-3 text-left text-xs space-y-1.5 text-[#5e5e63]">
+                  <div className="font-semibold text-[#171719] text-[11px] flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#30b357]" />
                     <span>How to complete payment:</span>
                   </div>
-                  <ol className="list-decimal list-inside space-y-1 text-meridian-text-3">
+                  <ol className="list-decimal list-inside space-y-1 text-[11px] text-[#85858a]">
                     <li>Unlock your mobile phone screen.</li>
-                    <li>Look for the USSD prompt asking to authorize <strong className="text-meridian-text-1">{parseInt(topUpAmount).toLocaleString()} UGX</strong>.</li>
-                    <li>Enter your <strong>Mobile Money PIN</strong> and tap OK / Send.</li>
+                    <li>Enter your Mobile Money PIN when prompted.</li>
+                    <li>Wait a moment for automatic confirmation.</li>
                   </ol>
                 </div>
 
-                {/* Live Polling Status */}
-                <div className="flex items-center justify-center gap-2 text-xs font-mono text-meridian-gold bg-meridian-gold/10 py-2.5 px-3 rounded-xl border border-meridian-gold/30">
-                  <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
-                  <span>Listening for Mobile Money confirmation...</span>
+                <div className="flex items-center justify-center gap-2 text-xs font-mono text-[#007aff] bg-[#edf5ff] py-2 px-3 rounded-[9px] border border-[#d6e7ff]">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  <span>Listening for payment confirmation...</span>
                 </div>
 
-                {/* Action Buttons */}
-                <div className="pt-2 flex items-center gap-3">
+                <div className="pt-2 flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setShowTopUpModal(false)}
-                    className="flex-1 py-2.5 border border-meridian-border rounded-xl text-xs font-medium text-meridian-text-3 hover:text-meridian-text-1 hover:bg-meridian-panel-raised transition cursor-pointer"
+                    className="flex-1 h-9 border border-[#e1e1e5] rounded-[8px] text-xs font-medium text-[#85858a] hover:bg-[#f7f7f8] transition cursor-pointer"
                   >
                     Close Window
                   </button>
@@ -714,10 +852,10 @@ export default function AttendancePage() {
                   <button
                     type="button"
                     onClick={() => loadData()}
-                    className="flex-1 py-2.5 bg-meridian-gold hover:bg-meridian-gold-dim text-white rounded-xl text-xs font-medium shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="flex-1 h-9 bg-[#007aff] hover:bg-[#0062cc] text-white rounded-[8px] text-xs font-medium shadow-2xs transition flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Check Balance Now</span>
+                    <span>Check Balance</span>
                   </button>
                 </div>
               </div>
@@ -726,28 +864,28 @@ export default function AttendancePage() {
             {/* STEP 3: SUCCESS */}
             {topUpStep === 'success' && (
               <div className="space-y-4 py-3 animate-fade-in text-center">
-                <div className="w-14 h-14 bg-meridian-gain/20 border border-meridian-gain/40 rounded-full flex items-center justify-center text-meridian-gain mx-auto shadow-md">
-                  <CheckCircle2 className="w-8 h-8" />
+                <div className="w-12 h-12 bg-[#edf9f0] border border-[#d2f4d9] rounded-full flex items-center justify-center text-[#30b357] mx-auto shadow-2xs">
+                  <CheckCircle2 className="w-6 h-6" />
                 </div>
 
                 <div className="space-y-1">
-                  <h4 className="font-serif text-lg font-semibold text-meridian-text-1">
+                  <h4 className="text-base font-bold text-[#171719]">
                     Top Up Successful!
                   </h4>
-                  <p className="text-xs text-meridian-gain font-medium">
+                  <p className="text-xs text-[#30b357] font-medium">
                     {topUpMessage || `Successfully added ${parseInt(topUpAmount).toLocaleString()} UGX to school balance.`}
                   </p>
                 </div>
 
-                <div className="bg-meridian-gain/10 border border-meridian-gain/20 rounded-xl p-3 text-xs text-meridian-text-2">
+                <div className="bg-[#edf9f0] border border-[#d2f4d9] rounded-[10px] p-3 text-xs text-[#2da94f]">
                   <span>Your new school SMS balance is </span>
-                  <strong className="text-meridian-gain font-mono text-sm">{currentBalance.toLocaleString()} UGX</strong>.
+                  <strong className="font-mono text-sm">{currentBalance.toLocaleString()} UGX</strong>.
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setShowTopUpModal(false)}
-                  className="w-full py-2.5 bg-meridian-gold hover:bg-meridian-gold-dim text-white rounded-xl text-xs font-medium shadow-sm transition cursor-pointer"
+                  className="w-full h-9 bg-[#171719] hover:bg-[#2c2c2e] text-white rounded-[8px] text-xs font-medium transition cursor-pointer"
                 >
                   Done
                 </button>
@@ -760,4 +898,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-

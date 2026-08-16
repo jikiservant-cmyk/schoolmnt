@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { loginAction } from './actions';
 import Link from 'next/link';
+import NajikiLogo from '@/components/NajikiLogo';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -35,15 +36,12 @@ export default function LoginPage() {
         
         {/* Logo/Brand Indicator */}
         <div className="flex flex-col items-center mb-6 text-center">
-          <svg className="w-10 h-10 mb-3" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="15" cy="15" r="13.5" fill="none" stroke="#16a34a" strokeWidth="1" strokeOpacity="0.4"/>
-            <circle cx="15" cy="15" r="9.5" fill="none" stroke="#16a34a" strokeWidth="1" strokeOpacity="0.7"/>
-            <circle cx="15" cy="15" r="5" fill="none" stroke="#16a34a" strokeWidth="1.2"/>
-            <circle cx="15" cy="15" r="1.6" fill="#16a34a"/>
-          </svg>
+          <div className="mb-3">
+            <NajikiLogo size="lg" />
+          </div>
           <h1 className="font-sans text-2xl font-bold tracking-tight text-meridian-text-1">Sign In</h1>
           <p className="text-[11px] font-mono uppercase tracking-widest text-meridian-text-3 mt-1">
-            SmartSkoolz Portal Access
+            Na&apos;Jiki Tech Portal Access
           </p>
         </div>
 

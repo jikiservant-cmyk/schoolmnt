@@ -45,7 +45,7 @@ export default function AddClassForm({ teachers }: { teachers: Teacher[] }) {
           Inscribe New Class
         </h3>
         <p className="text-[10px] font-mono uppercase tracking-wider text-meridian-text-3 mt-1">
-          SmartSkoolz Registrar
+          Na&apos;Jiki Tech Registrar
         </p>
       </div>
 

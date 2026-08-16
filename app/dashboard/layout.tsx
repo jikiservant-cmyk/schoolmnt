@@ -1,18 +1,18 @@
 import { createClient } from '@/utils/supabase/server';
 import Sidebar from './Sidebar';
+import Topbar from './Topbar';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   
-  // 1. Fetch current logged-in user and administrative session
+  // Fetch current logged-in user and administrative session
   let adminName = 'Administrator';
-  let schoolName = 'SmartSkoolz Academy';
-  let initials = 'AD';
+  let schoolName = 'Na\'Jiki Academy';
+  let initials = 'DK';
 
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      // Fetch details from staff_users, people, and schools
       const { data: staffData } = await supabase
         .from('staff_users')
         .select(`
@@ -30,19 +30,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
       if (staffData && staffData.people) {
         const person = staffData.people as any;
         adminName = person.full_name || 'Administrator';
-        schoolName = person.schools?.name || 'SmartSkoolz Academy';
+        schoolName = person.schools?.name || 'Na\'Jiki Academy';
         
-        // Compute initials
         initials = adminName
           .split(' ')
           .map(n => n[0])
           .join('')
           .substring(0, 2)
-          .toUpperCase() || 'AD';
+          .toUpperCase() || 'DK';
       } else {
-        // Fallback to auth metadata if profile not provisioned fully yet
         adminName = user.user_metadata?.full_name || 'Administrator';
-        initials = adminName.substring(0, 2).toUpperCase();
+        initials = adminName.substring(0, 2).toUpperCase() || 'DK';
       }
     }
   } catch (err) {
@@ -50,8 +48,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
-    <div className="flex min-h-screen bg-meridian-deep text-meridian-text-1 font-sans">
-      
+    <div className="min-h-screen bg-[#f7f7f8] text-[#171719] font-sans flex flex-col">
       {/* Sidebar */}
       <Sidebar 
         schoolName={schoolName} 
@@ -59,15 +56,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
         initials={initials} 
       />
 
-      {/* Main Container */}
-      <main className="flex-1 min-h-screen flex flex-col justify-between relative pt-16 md:pt-0 pb-20 md:pb-0">
-        <div className="p-4 md:p-8 max-w-7xl w-full mx-auto space-y-8 flex-1">
+      {/* Main Content Area */}
+      <div className="md:ml-[238px] min-h-screen flex flex-col pt-16 md:pt-0">
+        <Topbar 
+          adminName={adminName} 
+          initials={initials} 
+          schoolName={schoolName} 
+        />
+
+        <main className="flex-1 w-full max-w-[1320px] mx-auto px-4 sm:px-9 pb-10">
           {children}
-        </div>
-        <footer className="py-4 px-8 border-t border-meridian-border/50 text-center text-xs font-mono text-meridian-text-3">
-          SmartSkoolz Attendance Portal &bull; <span className="text-meridian-gold font-medium">Powered by Na&apos;Jiki Tech</span>
-        </footer>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

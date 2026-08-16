@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { KeyRound, Copy, Check, RefreshCw, X, ShieldAlert } from 'lucide-react';
+import { KeyRound, Copy, Check, RefreshCw, X, ShieldCheck } from 'lucide-react';
 import { resetTeacherPinAction } from './actions';
 
 interface TeacherPinManagerProps {
@@ -50,121 +50,105 @@ export default function TeacherPinManager({ personId, fullName }: TeacherPinMana
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-meridian-deep hover:bg-meridian-panel-raised border border-meridian-border hover:border-meridian-gold/50 text-meridian-text-2 hover:text-meridian-gold text-[11px] font-mono rounded-md transition-all cursor-pointer shadow-xs"
-        title="Reset & View Passcode"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white hover:bg-[#f7f7f8] border border-[#e1e1e5] hover:border-[#cfcfd4] text-[#171719] text-[11px] font-medium rounded-[8px] transition cursor-pointer shadow-2xs"
+        title="View or Reset Passcode"
       >
-        <KeyRound className="w-3 h-3 text-meridian-gold shrink-0" />
+        <KeyRound className="w-3 h-3 text-[#007aff] shrink-0" />
         <span>Passcode</span>
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-meridian-panel border border-meridian-border rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#171719]/40 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white border border-[#e7e7ea] rounded-[16px] max-w-md w-full p-6 space-y-4 shadow-2xl relative animate-fade-in">
             {/* Close button */}
             <button
               type="button"
               onClick={handleClose}
-              className="absolute top-4 right-4 text-meridian-text-3 hover:text-meridian-text-1 p-1 rounded-lg hover:bg-meridian-deep transition-colors"
+              className="absolute top-4 right-4 text-[#929297] hover:text-[#171719] p-1 rounded-lg transition"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
 
             {/* Header */}
-            <div className="space-y-1 pr-6">
-              <div className="flex items-center gap-2 text-meridian-gold font-serif text-xl font-medium">
-                <KeyRound className="w-5 h-5 shrink-0" />
-                Teacher Attendance Passcode
+            <div className="space-y-1 pr-6 border-b border-[#f1f1f4] pb-3">
+              <div className="flex items-center gap-2 text-[#171719] text-base font-bold">
+                <KeyRound className="w-4 h-4 text-[#007aff] shrink-0" />
+                <span>Teacher Attendance Passcode</span>
               </div>
-              <p className="text-xs text-meridian-text-3 font-mono">
-                Faculty Member: <strong className="text-meridian-text-1">{fullName}</strong>
+              <p className="text-xs text-[#85858a]">
+                Faculty Member: <strong className="text-[#171719]">{fullName}</strong>
               </p>
             </div>
 
             {/* Content area */}
             {generatedPin ? (
               <div className="space-y-4 animate-fade-in">
-                <div className="p-4 bg-meridian-deep border border-meridian-gold/40 rounded-xl space-y-3 text-center">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-meridian-gold font-bold">
-                    New Generated Attendance Passcode / PIN
+                <div className="p-4 bg-[#edf5ff] border border-[#d6e7ff] rounded-xl space-y-3 text-center">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-[#007aff]">
+                    New Attendance Passcode / PIN
                   </div>
                   
                   <div className="flex items-center justify-center gap-2 pt-1">
-                    <div className="font-mono text-3xl font-bold tracking-widest text-meridian-gold bg-meridian-panel border border-meridian-border px-5 py-2.5 rounded-xl select-all shadow-inner">
+                    <div className="font-mono text-2xl font-bold tracking-widest text-[#007aff] bg-white border border-[#d6e7ff] px-4 py-2 rounded-lg select-all shadow-2xs">
                       {generatedPin}
                     </div>
                     <button
                       type="button"
                       onClick={() => copyToClipboard(generatedPin)}
-                      className="p-3 bg-meridian-gold hover:bg-meridian-gold-dim text-white rounded-xl transition-all flex items-center justify-center cursor-pointer shadow-sm active:scale-95"
+                      className="p-2.5 bg-[#007aff] hover:bg-[#0062cc] text-white rounded-lg transition flex items-center justify-center cursor-pointer shadow-2xs"
                       title="Copy Passcode"
                     >
-                      {copied ? <Check className="w-5 h-5 text-white" /> : <Copy className="w-5 h-5" />}
+                      {copied ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
                     </button>
                   </div>
-
-                  {copied && (
-                    <div className="text-[11px] text-emerald-600 font-mono font-medium animate-fade-in">
-                      ✓ Passcode copied to clipboard!
-                    </div>
-                  )}
-
-                  <p className="text-[11px] font-mono text-meridian-text-3 text-left leading-relaxed pt-2 border-t border-meridian-border/50">
-                    • Hand this passcode over to <strong>{fullName}</strong>.<br />
-                    • They will enter this PIN at <code className="text-meridian-gold font-semibold">/mark-attendance</code> to log class records.
+                  <p className="text-[11px] text-[#5e5e63] text-left leading-relaxed pt-1">
+                    Share this unique passcode with <strong>{fullName}</strong>. They will use it to log into the kiosk terminal or manual register.
                   </p>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleClose}
-                    className="px-4 py-2 bg-meridian-gold hover:bg-meridian-gold-dim text-white text-xs font-mono rounded-lg transition-colors cursor-pointer"
-                  >
-                    Done
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="w-full h-9 bg-[#171719] hover:bg-[#2c2c2e] text-white rounded-[9px] text-xs font-medium transition cursor-pointer"
+                >
+                  Done
+                </button>
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="p-3.5 bg-meridian-deep border border-meridian-border rounded-xl text-xs text-meridian-text-2 space-y-2 leading-relaxed">
-                  <div className="font-semibold text-meridian-gold flex items-center gap-1.5">
-                    <ShieldAlert className="w-4 h-4" />
-                    How Teacher Passcodes Work
-                  </div>
-                  <p className="text-meridian-text-3">
-                    Passcodes are stored as secure one-way hashes for safety. If a teacher forgets their PIN, you can issue a <strong>new passcode</strong> immediately.
-                  </p>
-                </div>
+                <p className="text-xs text-[#5e5e63] leading-relaxed">
+                  Passcodes are hashed securely in the database. If the teacher lost their passcode or requires a new one, you can generate a fresh unique PIN below.
+                </p>
 
                 {errorMsg && (
-                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg font-mono">
+                  <div className="p-3 text-xs text-[#ef4444] bg-[#fff0ef] border border-[#fbd1cf] rounded-lg">
                     {errorMsg}
                   </div>
                 )}
 
-                <div className="flex justify-end gap-2 pt-2">
+                <div className="flex items-center justify-end gap-2 pt-2">
                   <button
                     type="button"
                     onClick={handleClose}
-                    className="px-3.5 py-2 bg-meridian-deep hover:bg-meridian-panel-raised border border-meridian-border text-meridian-text-2 text-xs font-mono rounded-lg transition-colors cursor-pointer"
+                    className="h-9 px-3 border border-[#e1e1e5] hover:bg-[#f7f7f8] rounded-[8px] text-xs text-[#5e5e63] font-medium transition cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
-                    disabled={isPending}
                     onClick={handleReset}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-meridian-gold hover:bg-meridian-gold-dim text-white text-xs font-mono rounded-lg transition-colors disabled:opacity-50 cursor-pointer shadow-sm"
+                    disabled={isPending}
+                    className="h-9 px-4 bg-[#007aff] hover:bg-[#0062cc] text-white rounded-[8px] text-xs font-medium flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer shadow-2xs"
                   >
                     {isPending ? (
                       <>
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        Generating New PIN...
+                        <span>Generating...</span>
                       </>
                     ) : (
                       <>
-                        <KeyRound className="w-3.5 h-3.5" />
-                        Generate & Reveal New PIN
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Generate New PIN</span>
                       </>
                     )}
                   </button>
