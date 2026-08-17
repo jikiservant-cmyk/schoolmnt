@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Calendar, ChevronDown, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
+import { formatEATTime, formatEATDate, getEATDateKey, getEATDayRange } from '@/lib/eat-time';
 
 interface LogItem {
   id: string;
@@ -19,26 +20,14 @@ interface LogItem {
   } | null;
 }
 
-function getDateKey(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return 'unknown';
-  const year = d.getUTCFullYear();
-  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 function formatDateLabel(dateKey: string, sampleDateStr: string): string {
-  const now = new Date();
-  const todayKey = getDateKey(now.toISOString());
+  const todayKey = getEATDateKey(new Date());
   
-  const y = new Date(now);
-  y.setUTCDate(y.getUTCDate() - 1);
-  const yesterdayKey = getDateKey(y.toISOString());
+  const y = new Date();
+  y.setDate(y.getDate() - 1);
+  const yesterdayKey = getEATDateKey(y);
 
-  const sampleDate = new Date(sampleDateStr);
-  const formatted = sampleDate.toLocaleDateString('en-US', {
-    timeZone: 'UTC',
+  const formatted = formatEATDate(sampleDateStr, {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
@@ -55,11 +44,11 @@ function formatDateLabel(dateKey: string, sampleDateStr: string): string {
 }
 
 export default function AttendanceLogsByDate({ logs }: { logs: LogItem[] }) {
-  // Group logs by YYYY-MM-DD
+  // Group logs by YYYY-MM-DD in EAT
   const groupsMap: Record<string, { label: string; dateKey: string; logs: LogItem[] }> = {};
 
   logs.forEach((log) => {
-    const key = getDateKey(log.occurred_at);
+    const key = getEATDateKey(log.occurred_at);
     if (!groupsMap[key]) {
       groupsMap[key] = {
         dateKey: key,
@@ -70,10 +59,11 @@ export default function AttendanceLogsByDate({ logs }: { logs: LogItem[] }) {
     groupsMap[key].logs.push(log);
   });
 
+
   // Sort groups descending by date key
   const sortedKeys = Object.keys(groupsMap).sort((a, b) => b.localeCompare(a));
 
-  const todayKey = getDateKey(new Date().toISOString());
+  const todayKey = getEATDateKey(new Date());
 
   // Default open groups
   const [openKeys, setOpenKeys] = useState<Set<string>>(() => {
@@ -258,7 +248,7 @@ export default function AttendanceLogsByDate({ logs }: { logs: LogItem[] }) {
                                 {log.source === 'device' ? 'Biometric' : 'Manual'}
                               </span>
                               <span suppressHydrationWarning>
-                                {new Date(log.occurred_at).toLocaleTimeString('en-US', {
+                                {formatEATTime(log.occurred_at, {
                                   hour: 'numeric',
                                   minute: '2-digit',
                                   second: '2-digit',
@@ -307,7 +297,7 @@ export default function AttendanceLogsByDate({ logs }: { logs: LogItem[] }) {
                                   </span>
                                 </td>
                                 <td className="py-3 text-right text-xs text-slate-500 font-medium" suppressHydrationWarning>
-                                  {new Date(log.occurred_at).toLocaleTimeString('en-US', {
+                                  {formatEATTime(log.occurred_at, {
                                     hour: 'numeric',
                                     minute: '2-digit',
                                     second: '2-digit',

@@ -53,7 +53,7 @@ export async function getAttendanceData() {
       .from('attendance_logs')
       .select(`
         *,
-        people!inner (
+        people (
           id,
           full_name,
           role,
@@ -66,7 +66,7 @@ export async function getAttendanceData() {
           )
         )
       `)
-      .eq('people.school_id', schoolId)
+      .eq('school_id', schoolId)
       .order('occurred_at', { ascending: false })
       .limit(500);
 

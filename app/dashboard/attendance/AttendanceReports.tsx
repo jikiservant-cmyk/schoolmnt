@@ -26,6 +26,7 @@ import {
   Layers,
   ChevronDown
 } from 'lucide-react';
+import { formatEATTime, formatEATDate, formatEATDateTime, getEATDateKey, getEATDayRange, EAT_TIMEZONE } from '@/lib/eat-time';
 
 interface AttendanceReportsProps {
   logs: any[];
@@ -55,20 +56,21 @@ export default function AttendanceReports({
   const [selectedPersonId, setSelectedPersonId] = useState<string>('');
   const [personSearch, setPersonSearch] = useState('');
 
-  // Date controls
+  // Date controls (all initialized in EAT)
   const [selectedDayDate, setSelectedDayDate] = useState<string>(() => {
-    return new Date().toISOString().split('T')[0];
+    return getEATDateKey(new Date());
   });
 
   const [datePreset, setDatePreset] = useState<'today' | 'yesterday' | 'week' | 'month' | 'last30' | 'custom'>('today');
   const [customStartDate, setCustomStartDate] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    return d.toISOString().split('T')[0];
+    return getEATDateKey(d);
   });
   const [customEndDate, setCustomEndDate] = useState<string>(() => {
-    return new Date().toISOString().split('T')[0];
+    return getEATDateKey(new Date());
   });
+
 
   // Copy to clipboard status
   const [copiedSummary, setCopiedSummary] = useState(false);
@@ -99,76 +101,79 @@ export default function AttendanceReports({
     );
   }, [people, personSearch]);
 
-  // Calculate Date bounds for Period reports
+  // Calculate Date bounds for Period reports in East Africa Time
   const { startDate, endDate, dateRangeLabel } = useMemo(() => {
-    const now = new Date();
-    let start = new Date();
-    let end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-
     if (reportMode === 'class_daily_sheet') {
-      const parts = selectedDayDate.split('-');
-      const y = parseInt(parts[0], 10);
-      const m = parseInt(parts[1], 10) - 1;
-      const d = parseInt(parts[2], 10);
-      start = new Date(y, m, d, 0, 0, 0);
-      end = new Date(y, m, d, 23, 59, 59);
+      const range = getEATDayRange(selectedDayDate);
       return {
-        startDate: start,
-        endDate: end,
-        dateRangeLabel: start.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })
+        startDate: new Date(range.startIso),
+        endDate: new Date(range.endIso),
+        dateRangeLabel: formatEATDate(range.startIso, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })
       };
     }
 
     if (datePreset === 'today') {
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      const range = getEATDayRange(new Date());
       return {
-        startDate: start,
-        endDate: end,
-        dateRangeLabel: `Today (${now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})`
+        startDate: new Date(range.startIso),
+        endDate: new Date(range.endIso),
+        dateRangeLabel: `Today (${formatEATDate(range.startIso, { month: 'short', day: 'numeric', year: 'numeric' })})`
       };
     } else if (datePreset === 'yesterday') {
       const y = new Date();
       y.setDate(y.getDate() - 1);
-      start = new Date(y.getFullYear(), y.getMonth(), y.getDate(), 0, 0, 0);
-      end = new Date(y.getFullYear(), y.getMonth(), y.getDate(), 23, 59, 59);
+      const range = getEATDayRange(y);
       return {
-        startDate: start,
-        endDate: end,
-        dateRangeLabel: `Yesterday (${y.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})`
+        startDate: new Date(range.startIso),
+        endDate: new Date(range.endIso),
+        dateRangeLabel: `Yesterday (${formatEATDate(range.startIso, { month: 'short', day: 'numeric', year: 'numeric' })})`
       };
     } else if (datePreset === 'week') {
-      const day = now.getDay();
-      const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday
-      start = new Date(now.setDate(diff));
-      start.setHours(0, 0, 0, 0);
+      const nowKey = getEATDateKey(new Date());
+      const nowEat = new Date(`${nowKey}T00:00:00+03:00`);
+      const day = nowEat.getDay();
+      const diff = nowEat.getDate() - day + (day === 0 ? -6 : 1); // Monday
+      const mondayDate = new Date(nowEat);
+      mondayDate.setDate(diff);
+      const startKey = getEATDateKey(mondayDate);
+      const start = new Date(`${startKey}T00:00:00+03:00`);
+      const end = new Date(`${nowKey}T23:59:59.999+03:00`);
       return {
         startDate: start,
         endDate: end,
-        dateRangeLabel: `This Week (${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – Present)`
+        dateRangeLabel: `This Week (${formatEATDate(start, { month: 'short', day: 'numeric' })} – Present)`
       };
     } else if (datePreset === 'month') {
-      start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+      const nowKey = getEATDateKey(new Date());
+      const parts = nowKey.split('-');
+      const start = new Date(`${parts[0]}-${parts[1]}-01T00:00:00+03:00`);
+      const end = new Date(`${nowKey}T23:59:59.999+03:00`);
       return {
         startDate: start,
         endDate: end,
-        dateRangeLabel: `${now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
+        dateRangeLabel: `${formatEATDate(start, { month: 'long', year: 'numeric' })}`
       };
     } else if (datePreset === 'last30') {
-      start = new Date();
-      start.setDate(start.getDate() - 30);
-      start.setHours(0, 0, 0, 0);
+      const nowKey = getEATDateKey(new Date());
+      const d = new Date(`${nowKey}T00:00:00+03:00`);
+      d.setDate(d.getDate() - 30);
+      const startKey = getEATDateKey(d);
+      const start = new Date(`${startKey}T00:00:00+03:00`);
+      const end = new Date(`${nowKey}T23:59:59.999+03:00`);
       return {
         startDate: start,
         endDate: end,
-        dateRangeLabel: `Last 30 Days (${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})`
+        dateRangeLabel: `Last 30 Days (${formatEATDate(start, { month: 'short', day: 'numeric' })} – ${formatEATDate(end, { month: 'short', day: 'numeric', year: 'numeric' })})`
       };
     } else {
-      const s = customStartDate ? new Date(customStartDate + 'T00:00:00') : new Date();
-      const e = customEndDate ? new Date(customEndDate + 'T23:59:59') : new Date();
+      const sKey = customStartDate || getEATDateKey(new Date());
+      const eKey = customEndDate || getEATDateKey(new Date());
+      const s = new Date(`${sKey}T00:00:00+03:00`);
+      const e = new Date(`${eKey}T23:59:59.999+03:00`);
       return {
         startDate: s,
         endDate: e,
-        dateRangeLabel: `${s.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} to ${e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+        dateRangeLabel: `${formatEATDate(s, { month: 'short', day: 'numeric', year: 'numeric' })} to ${formatEATDate(e, { month: 'short', day: 'numeric', year: 'numeric' })}`
       };
     }
   }, [reportMode, selectedDayDate, datePreset, customStartDate, customEndDate]);
@@ -224,7 +229,7 @@ export default function AttendanceReports({
       if (matchLog) {
         status = matchLog.status === 'late' ? 'late' : 'present';
         if (matchLog.occurred_at) {
-          checkInTime = new Date(matchLog.occurred_at).toLocaleTimeString('en-US', {
+          checkInTime = formatEATTime(matchLog.occurred_at, {
             hour: '2-digit',
             minute: '2-digit'
           });
@@ -360,10 +365,9 @@ export default function AttendanceReports({
 
         const tableHeaders = ['Date', 'Time', 'Person Name', 'Role', 'Class / Scope', 'Status', 'Channel', 'Device UID', 'Parent Phone'];
         const tableRows = filteredReportLogs.map(log => {
-          const d = new Date(log.occurred_at);
           return [
-            d.toLocaleDateString('en-US'),
-            d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+            formatEATDate(log.occurred_at, { month: '2-digit', day: '2-digit', year: 'numeric' }),
+            formatEATTime(log.occurred_at, { hour: '2-digit', minute: '2-digit' }),
             log.people?.full_name || 'Unknown',
             log.people?.role || 'Student',
             log.people?.class_id ? classMap.get(log.people.class_id) || 'Unassigned' : 'General',
@@ -422,9 +426,8 @@ export default function AttendanceReports({
       }
       const headers = ['Date', 'Time', 'Person Name', 'Role', 'Class / Scope', 'Status', 'Check-In Type', 'Device UID'];
       const rows = filteredReportLogs.map(log => {
-        const dateObj = new Date(log.occurred_at);
-        const dateStr = dateObj.toLocaleDateString('en-US');
-        const timeStr = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        const dateStr = formatEATDate(log.occurred_at, { month: '2-digit', day: '2-digit', year: 'numeric' });
+        const timeStr = formatEATTime(log.occurred_at, { hour: '2-digit', minute: '2-digit' });
         const name = log.people?.full_name || 'Unknown';
         const role = log.people?.role || 'Student';
         const className = log.people?.class_id ? classMap.get(log.people.class_id) || 'Unassigned' : 'General';
@@ -1030,13 +1033,12 @@ export default function AttendanceReports({
                   </tr>
                 ) : (
                   filteredReportLogs.map((log) => {
-                    const dateObj = new Date(log.occurred_at);
-                    const dateFormatted = dateObj.toLocaleDateString('en-US', {
+                    const dateFormatted = formatEATDate(log.occurred_at, {
                       weekday: 'short',
                       month: 'short',
                       day: 'numeric'
                     });
-                    const timeFormatted = dateObj.toLocaleTimeString('en-US', {
+                    const timeFormatted = formatEATTime(log.occurred_at, {
                       hour: '2-digit',
                       minute: '2-digit'
                     });
@@ -1047,7 +1049,7 @@ export default function AttendanceReports({
 
                     return (
                       <tr key={log.id} className="hover:bg-[#fbfbfd] transition">
-                        <td className="py-3 px-5 whitespace-nowrap font-medium text-[#171719]">
+                        <td className="py-3 px-5 whitespace-nowrap font-medium text-[#171719]" suppressHydrationWarning>
                           {dateFormatted}
                         </td>
 
@@ -1067,7 +1069,7 @@ export default function AttendanceReports({
                           )}
                         </td>
 
-                        <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-[#171719]">
+                        <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-[#171719]" suppressHydrationWarning>
                           {timeFormatted}
                         </td>
 
@@ -1104,8 +1106,8 @@ export default function AttendanceReports({
 
         {/* Official Printable Signature Footer */}
         <div className="p-6 bg-[#fafafa] border-t border-[#f1f1f4] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-          <div className="text-[11px] text-[#85858a]">
-            Generated by Na&apos;Jiki Tech Portal &middot; {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} at {new Date().toLocaleTimeString()}
+          <div className="text-[11px] text-[#85858a]" suppressHydrationWarning>
+            Generated by Na&apos;Jiki Tech Portal &middot; {formatEATDate(new Date(), { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} at {formatEATTime(new Date(), { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </div>
 
           <div className="flex items-center gap-8 text-xs text-[#5e5e63]">

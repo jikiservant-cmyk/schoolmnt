@@ -2,7 +2,7 @@
 
 import { createClient } from '@/utils/supabase/server';
 import { createPublicAdminClient } from '@/utils/supabase/admin';
-import { isWithinAttendanceSmsWindow } from '@/lib/attendance-window';
+import { isWithinAttendanceSmsWindow, getEatTodayRange, getAttendanceStatusForCheckIn } from '@/lib/attendance-window';
 
 export async function submitClockInAction(deviceUserId: string) {
   if (!deviceUserId) {
@@ -90,18 +90,17 @@ export async function submitClockInAction(deviceUserId: string) {
     }
 
     // -------------------------------------------------------------
-    // Step B2 — Check today's existing attendance logs for this person
+    // Step B2 — Check today's existing attendance logs for this person in EAT
     // -------------------------------------------------------------
     const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const { startIso, endIso } = getEatTodayRange(now);
 
     const { data: todayLogs } = await adminClient
       .from('attendance_logs')
       .select('id, attendance_type')
       .eq('person_id', person.id)
-      .gte('occurred_at', startOfDay.toISOString())
-      .lte('occurred_at', endOfDay.toISOString());
+      .gte('occurred_at', startIso)
+      .lte('occurred_at', endIso);
 
     const hasCheckIn = todayLogs?.some(l => l.attendance_type === 'check_in');
     const hasCheckOut = todayLogs?.some(l => l.attendance_type === 'check_out');
@@ -114,6 +113,8 @@ export async function submitClockInAction(deviceUserId: string) {
     if (hasCheckIn && !hasCheckOut) {
       attendanceType = 'check_out';
     }
+
+    const calculatedStatus = attendanceType === 'check_in' ? getAttendanceStatusForCheckIn(now) : 'present';
 
     // Resolve class name for snapshots
     let classNameAtTime: string | null = null;
@@ -139,7 +140,7 @@ export async function submitClockInAction(deviceUserId: string) {
         source: 'device',
         device_id: deviceId,
         device_log_id: rawLog?.id || null,
-        status: 'present',
+        status: calculatedStatus,
         attendance_type: attendanceType,
         class_id_at_time: person.class_id,
         class_name_at_time: classNameAtTime,

@@ -419,7 +419,7 @@ export default function DashboardClient({
                         .toUpperCase();
 
                       const timeStr = log.occurred_at
-                        ? new Date(log.occurred_at).toLocaleTimeString('en-US', {
+                        ? new Date(log.occurred_at).toLocaleTimeString('en-US', { timeZone: 'Africa/Kampala',
                             hour: '2-digit',
                             minute: '2-digit',
                           })
@@ -476,6 +476,19 @@ export default function DashboardClient({
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {displayedLogs.length > 8 && (
+              <div className="pt-3 mt-1 border-t border-[#f4f4f6] flex items-center justify-between text-[11px] text-[#85858a]">
+                <span>Showing 8 of {displayedLogs.length} recent check-ins</span>
+                <Link 
+                  href="/dashboard/attendance" 
+                  className="font-medium text-[#007aff] hover:underline flex items-center gap-0.5"
+                >
+                  <span>View complete list</span>
+                  <ChevronRight className="w-3 h-3" />
+                </Link>
               </div>
             )}
           </div>

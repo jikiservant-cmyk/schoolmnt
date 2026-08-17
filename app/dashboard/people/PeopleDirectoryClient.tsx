@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useTransition } from 'react';
 import Link from 'next/link';
 import { 
   Users, 
@@ -15,10 +15,16 @@ import {
   Shield, 
   X,
   Phone,
-  Filter
+  Filter,
+  Fingerprint,
+  Edit2,
+  Check,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import AddPersonForm from './AddPersonForm';
 import TeacherPinManager from './TeacherPinManager';
+import { updatePersonDeviceUserIdAction } from './actions';
 
 interface SchoolClass {
   id: string;
@@ -50,6 +56,45 @@ export default function PeopleDirectoryClient({
   const [roleFilter, setRoleFilter] = useState<string>(initialRoleFilter);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [showAddModal, setShowAddModal] = useState(false);
+
+  // Quick edit biometric UID modal
+  const [editingPerson, setEditingPerson] = useState<Person | null>(null);
+  const [newDeviceUid, setNewDeviceUid] = useState('');
+  const [isPending, startTransition] = useTransition();
+  const [uidError, setUidError] = useState<string | null>(null);
+  const [uidSuccess, setUidSuccess] = useState<string | null>(null);
+
+  const openEditUidModal = (person: Person) => {
+    setEditingPerson(person);
+    setNewDeviceUid(person.device_user_id || '');
+    setUidError(null);
+    setUidSuccess(null);
+  };
+
+  const handleSaveUid = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPerson) return;
+
+    setUidError(null);
+    setUidSuccess(null);
+
+    startTransition(async () => {
+      try {
+        const res = await updatePersonDeviceUserIdAction(editingPerson.id, newDeviceUid);
+        if (res && res.error) {
+          setUidError(res.error);
+        } else {
+          setUidSuccess('Biometric Hardware UID updated and synced with terminal!');
+          setTimeout(() => {
+            setEditingPerson(null);
+            setUidSuccess(null);
+          }, 1200);
+        }
+      } catch (err: any) {
+        setUidError(err.message || 'Failed to update UID.');
+      }
+    });
+  };
 
   // Map class lookup
   const classMap = useMemo(() => {
@@ -365,13 +410,29 @@ export default function PeopleDirectoryClient({
 
                       {/* Device UID */}
                       <td className="py-3.5 px-4 whitespace-nowrap text-center">
-                        {person.device_user_id ? (
-                          <span className="font-mono text-[11px] font-medium bg-[#fafafa] border border-[#e7e7ea] px-2 py-0.5 rounded text-[#171719]">
-                            {person.device_user_id}
-                          </span>
-                        ) : (
-                          <span className="text-[#b4b4b8] text-[11px]">—</span>
-                        )}
+                        <div className="inline-flex items-center gap-1.5 justify-center">
+                          {person.device_user_id ? (
+                            <button
+                              type="button"
+                              onClick={() => openEditUidModal(person)}
+                              className="group font-mono text-[11px] font-medium bg-[#fafafa] hover:bg-[#edf5ff] border border-[#e7e7ea] hover:border-[#007aff]/40 px-2 py-0.5 rounded text-[#171719] transition flex items-center gap-1 cursor-pointer"
+                              title="Click to edit Biometric UID"
+                            >
+                              <span>{person.device_user_id}</span>
+                              <Edit2 className="w-2.5 h-2.5 text-[#929297] group-hover:text-[#007aff]" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => openEditUidModal(person)}
+                              className="text-[10px] text-[#007aff] hover:text-[#0062cc] bg-[#edf5ff] hover:bg-[#dbeafe] px-2 py-0.5 rounded font-medium transition cursor-pointer flex items-center gap-1"
+                              title="Assign Biometric Device UID"
+                            >
+                              <Fingerprint className="w-2.5 h-2.5" />
+                              <span>Assign UID</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                       {/* Contact Phone */}
@@ -401,11 +462,19 @@ export default function PeopleDirectoryClient({
 
                       {/* Actions */}
                       <td className="py-3.5 px-5 whitespace-nowrap text-right">
-                        {person.role === 'teacher' ? (
-                          <TeacherPinManager personId={person.id} fullName={person.full_name} />
-                        ) : (
-                          <span className="text-[#b4b4b8] text-xs">—</span>
-                        )}
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openEditUidModal(person)}
+                            className="p-1.5 text-[#85858a] hover:text-[#007aff] hover:bg-[#f0f0f3] rounded-md transition cursor-pointer"
+                            title="Edit Biometric Hardware UID"
+                          >
+                            <Fingerprint className="w-3.5 h-3.5" />
+                          </button>
+                          {person.role === 'teacher' && (
+                            <TeacherPinManager personId={person.id} fullName={person.full_name} />
+                          )}
+                        </div>
                       </td>
 
                     </tr>
@@ -428,6 +497,108 @@ export default function PeopleDirectoryClient({
         </div>
 
       </div>
+
+      {/* Edit Biometric UID Modal */}
+      {editingPerson && (
+        <div className="fixed inset-0 z-50 bg-[#171719]/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#e7e7ea] rounded-[16px] max-w-md w-full p-6 shadow-xl animate-fade-in space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#f1f1f4]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-full bg-[#edf5ff] text-[#007aff] flex items-center justify-center">
+                  <Fingerprint className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-[#171719]">Biometric Hardware UID</h3>
+                  <p className="text-[11px] text-[#85858a]">Link ZKTeco terminal PIN / Device User ID</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setEditingPerson(null);
+                  setUidError(null);
+                  setUidSuccess(null);
+                }} 
+                className="p-1 text-[#929297] hover:text-[#171719]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-[#f7f7f9] p-3 rounded-[10px] border border-[#e7e7ea] space-y-1">
+              <div className="text-[10px] uppercase font-semibold tracking-wider text-[#929297]">
+                Target Member
+              </div>
+              <div className="text-xs font-bold text-[#171719] flex items-center gap-2">
+                <span>{editingPerson.full_name}</span>
+                <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-[#edf5ff] text-[#007aff]">
+                  {editingPerson.role}
+                </span>
+              </div>
+            </div>
+
+            {uidError && (
+              <div className="p-3 text-xs text-[#ef4444] bg-[#fff0ef] rounded-[9px] border border-[#fbd1cf] flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{uidError}</span>
+              </div>
+            )}
+
+            {uidSuccess && (
+              <div className="p-3 text-xs text-[#2da94f] bg-[#edf9f0] rounded-[9px] border border-[#d2f4d9] flex items-center gap-2">
+                <Check className="w-4 h-4 shrink-0" />
+                <span>{uidSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveUid} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-semibold text-[#171719] mb-1.5">
+                  Device Hardware UID / PIN
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 101 or 1012 or 90745"
+                  value={newDeviceUid}
+                  onChange={(e) => setNewDeviceUid(e.target.value)}
+                  disabled={isPending}
+                  className="w-full h-10 px-3 bg-white border border-[#e1e1e5] text-xs font-mono rounded-[9px] focus:outline-none focus:border-[#007aff] transition text-[#171719] placeholder:text-[#96969b]"
+                />
+                <p className="text-[11px] text-[#85858a] mt-1.5 leading-relaxed">
+                  Enter the exact User ID / PIN configured on the biometric terminal for this teacher or student. When they scan their fingerprint or enter this PIN, their attendance will be captured into <strong>school.attendance_logs</strong> automatically.
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingPerson(null)}
+                  disabled={isPending}
+                  className="h-9 px-3.5 border border-[#e1e1e5] hover:bg-[#f7f7f8] rounded-[9px] text-xs text-[#5e5e63] font-medium transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="h-9 px-4 bg-[#007aff] hover:bg-[#0062cc] text-white rounded-[9px] text-xs font-medium transition flex items-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-60"
+                >
+                  {isPending ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Syncing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Save & Sync UID</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Add Person Modal */}
       {showAddModal && (

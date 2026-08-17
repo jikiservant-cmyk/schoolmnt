@@ -2,22 +2,23 @@
 // ZKTeco F18 displays up to ~24 characters on the LCD screen when a user clocks in
 export function formatZKTecoDisplayName(person: {
   full_name: string;
-  role: 'student' | 'teacher';
+  role: 'student' | 'teacher' | 'admin' | string;
   classes?: { name: string } | null;
 }): string {
-  const rolePrefix = person.role === 'teacher' ? 'Tr.' : '';
-  const className = person.classes?.name ? `(${person.classes.name})` : (person.role === 'teacher' ? '(Staff)' : '');
+  const isTeacher = person.role === 'teacher' || person.role === 'admin';
+  const className = person.classes?.name ? `(${person.classes.name})` : (isTeacher ? '(Staff)' : '');
   
   // Format clean name: e.g. "John Doe (Gr.7A)" or "Tr. Alice (Staff)"
   const firstAndLast = person.full_name.trim();
   let displayName = '';
 
-  if (person.role === 'teacher') {
-    displayName = `Tr. ${firstAndLast}`;
+  if (isTeacher) {
+    const prefix = person.role === 'admin' ? 'Adm.' : 'Tr.';
+    displayName = `${prefix} ${firstAndLast}`;
     if (displayName.length > 16) {
       // Shorten if long
       const parts = firstAndLast.split(' ');
-      displayName = `Tr. ${parts[0]} ${parts[parts.length - 1][0]}.`;
+      displayName = `${prefix} ${parts[0]} ${parts[parts.length - 1][0]}.`;
     }
   } else {
     // Student

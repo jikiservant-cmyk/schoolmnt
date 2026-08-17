@@ -19,6 +19,7 @@ import {
   CreditCard,
   Sparkles,
   ChevronRight,
+  ChevronDown,
   Smartphone,
   ShieldCheck,
   CheckCircle2,
@@ -30,6 +31,7 @@ import {
 } from 'lucide-react';
 import TeacherAttendanceManager from './TeacherAttendanceManager';
 import AttendanceReports from './AttendanceReports';
+import { formatEATTime, formatEATDate, getEATDateKey } from '@/lib/eat-time';
 
 export default function AttendancePage() {
   const [logs, setLogs] = useState<any[]>([]);
@@ -51,6 +53,9 @@ export default function AttendancePage() {
   const [topUpMessage, setTopUpMessage] = useState('');
   const [initialBalance, setInitialBalance] = useState<number>(0);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Foldable / Collapsible date groups state (empty set means all groups are expanded by default)
+  const [collapsedStudentDateKeys, setCollapsedStudentDateKeys] = useState<Set<string>>(() => new Set());
 
   // Search & Filter state for Students tab
   const [searchTerm, setSearchTerm] = useState('');
@@ -177,17 +182,13 @@ export default function AttendancePage() {
     });
   }, [studentLogs, searchTerm, statusFilter, classFilter]);
 
-  // Group student logs by date (YYYY-MM-DD)
+  // Group student logs by date in East Africa Time (YYYY-MM-DD)
   const groupedStudentLogs = useMemo(() => {
     const map: { [key: string]: any[] } = {};
     
     filteredStudentLogs.forEach(log => {
       if (!log.occurred_at) return;
-      const dateObj = new Date(log.occurred_at);
-      const year = dateObj.getFullYear();
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      const dateKey = `${year}-${month}-${day}`;
+      const dateKey = getEATDateKey(log.occurred_at);
       
       if (!map[dateKey]) {
         map[dateKey] = [];
@@ -195,20 +196,19 @@ export default function AttendancePage() {
       map[dateKey].push(log);
     });
 
-    const now = new Date();
-    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const todayKey = getEATDateKey(new Date());
     
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+    const yesterdayKey = getEATDateKey(yesterday);
 
     return Object.keys(map)
       .sort((a, b) => b.localeCompare(a))
       .map(dateKey => {
         const dayLogs = map[dateKey];
-        const dateObj = new Date(dateKey + 'T00:00:00');
+        const sampleIso = dayLogs[0]?.occurred_at || `${dateKey}T00:00:00+03:00`;
         
-        let label = dateObj.toLocaleDateString('en-US', {
+        let label = formatEATDate(sampleIso, {
           weekday: 'long',
           month: 'short',
           day: 'numeric',
@@ -235,6 +235,26 @@ export default function AttendancePage() {
         };
       });
   }, [filteredStudentLogs]);
+
+  const toggleStudentDateKey = (dateKey: string) => {
+    setCollapsedStudentDateKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(dateKey)) {
+        next.delete(dateKey); // Unfold
+      } else {
+        next.add(dateKey); // Fold
+      }
+      return next;
+    });
+  };
+
+  const expandAllStudentDates = () => {
+    setCollapsedStudentDateKeys(new Set());
+  };
+
+  const collapseAllStudentDates = () => {
+    setCollapsedStudentDateKeys(new Set(groupedStudentLogs.map(g => g.dateKey)));
+  };
 
   const currentBalance = school?.settings?.balance || 0;
   const approxSMSCount = Math.floor(currentBalance / 50);
@@ -496,121 +516,166 @@ export default function AttendancePage() {
           </div>
 
           {/* Logs Grouped by Date */}
-          <div className="space-y-5">
-            {groupedStudentLogs.length > 0 ? (
-              groupedStudentLogs.map((group) => (
-                <div 
-                  key={group.dateKey} 
-                  className="bg-white border border-[#e7e7ea] rounded-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.02)] overflow-hidden"
-                >
-                  {/* Date Header */}
-                  <div className="px-5 py-3.5 bg-[#fafafa] border-b border-[#f1f1f4] flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-[#85858a]" />
-                      <h2 className="font-bold text-xs text-[#171719]">
-                        {group.label}
-                      </h2>
-                      {group.badge && (
-                        <span className="px-2 py-0.5 text-[10px] font-semibold bg-[#edf5ff] text-[#007aff] rounded-full">
-                          {group.badge}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="px-2.5 py-0.5 bg-white rounded-md border border-[#e7e7ea] text-[#85858a] text-[11px]">
-                        Total: <strong className="text-[#171719]">{group.logs.length}</strong>
-                      </span>
-                      <span className="px-2.5 py-0.5 bg-[#edf9f0] border border-[#d2f4d9] text-[#2da94f] rounded-md text-[11px]">
-                        Present: <strong>{group.presentCount}</strong>
-                      </span>
-                      {group.lateCount > 0 && (
-                        <span className="px-2.5 py-0.5 bg-[#fff5e7] border border-[#ffe0b2] text-[#f5a30a] rounded-md text-[11px]">
-                          Late: <strong>{group.lateCount}</strong>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Table Container with Horizontal Scrolling */}
-                  <div className="w-full overflow-x-auto">
-                    <table className="w-full min-w-[760px] text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="border-b border-[#f1f1f4] text-[10px] uppercase font-semibold tracking-wider text-[#929297]">
-                          <th className="py-3 px-5 whitespace-nowrap">Student</th>
-                          <th className="py-3 px-4 whitespace-nowrap">Arrival Time</th>
-                          <th className="py-3 px-4 whitespace-nowrap">Status</th>
-                          <th className="py-3 px-4 whitespace-nowrap">Check-In Type</th>
-                          <th className="py-3 px-5 whitespace-nowrap text-right">Parent SMS Notification</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#f7f7f9]">
-                        {group.logs.map((log) => {
-                          const logTime = log.occurred_at 
-                            ? new Date(log.occurred_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-                            : '—';
-                          
-                          const personName = log.people?.full_name || 'Student';
-                          const initials = personName
-                            .split(' ')
-                            .map((n: string) => n[0])
-                            .join('')
-                            .substring(0, 2)
-                            .toUpperCase();
-
-                          return (
-                            <tr key={log.id} className="hover:bg-[#fbfbfd] transition">
-                              <td className="py-3 px-5 whitespace-nowrap">
-                                <div className="flex items-center gap-2.5">
-                                  <div className="w-7 h-7 rounded-full bg-[#f0f0f3] text-[#555] flex items-center justify-center font-bold text-[10px]">
-                                    {initials}
-                                  </div>
-                                  <div>
-                                    <div className="font-semibold text-[#171719] text-xs">{personName}</div>
-                                    <div className="text-[10px] text-[#929297]">
-                                      {log.people?.classes?.name || 'Class Student'}
-                                    </div>
-                                  </div>
-                                </div>
-                              </td>
-                              
-                              <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-[#171719]" suppressHydrationWarning>
-                                {logTime}
-                              </td>
-                              
-                              <td className="py-3 px-4 whitespace-nowrap">
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium ${
-                                  log.status === 'present'
-                                    ? 'bg-[#edf9f0] text-[#2da94f]'
-                                    : log.status === 'late'
-                                    ? 'bg-[#fff5e7] text-[#f5a30a]'
-                                    : 'bg-[#fff0ef] text-[#ef4444]'
-                                }`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${
-                                    log.status === 'present' ? 'bg-[#30b357]' : log.status === 'late' ? 'bg-[#f5a30a]' : 'bg-[#ef4444]'
-                                  }`} />
-                                  <span className="capitalize">{log.status}</span>
-                                </span>
-                              </td>
-
-                              <td className="py-3 px-4 whitespace-nowrap text-xs text-[#5e5e63]">
-                                <span className="capitalize">{(log.attendance_type || 'check_in').replace(/_/g, ' ')}</span>
-                              </td>
-
-                              <td className="py-3 px-5 whitespace-nowrap text-right">
-                                <div className="inline-flex items-center gap-1.5 text-xs text-[#2da94f] font-medium bg-[#edf9f0] px-2.5 py-0.5 rounded-full">
-                                  <Send className="w-3 h-3 text-[#30b357]" />
-                                  <span>SMS Delivered</span>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+          <div className="space-y-4">
+            {groupedStudentLogs.length > 1 && (
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs text-[#85858a] font-medium">
+                  {groupedStudentLogs.length} attendance dates recorded
+                </span>
+                <div className="flex items-center gap-1.5 bg-[#f5f5f7] border border-[#e7e7ea] p-1 rounded-lg text-xs">
+                  <button
+                    type="button"
+                    onClick={expandAllStudentDates}
+                    className="px-2 py-0.5 rounded text-[#5e5e63] hover:text-[#171719] hover:bg-white transition cursor-pointer font-medium"
+                  >
+                    Expand all
+                  </button>
+                  <span className="text-[#d1d1d6]">&middot;</span>
+                  <button
+                    type="button"
+                    onClick={collapseAllStudentDates}
+                    className="px-2 py-0.5 rounded text-[#5e5e63] hover:text-[#171719] hover:bg-white transition cursor-pointer font-medium"
+                  >
+                    Collapse all
+                  </button>
                 </div>
-              ))
+              </div>
+            )}
+
+            {groupedStudentLogs.length > 0 ? (
+              groupedStudentLogs.map((group) => {
+                const isOpen = !collapsedStudentDateKeys.has(group.dateKey);
+
+                return (
+                  <div 
+                    key={group.dateKey} 
+                    className="bg-white border border-[#e7e7ea] rounded-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.02)] overflow-hidden transition-all duration-200"
+                  >
+                    {/* Foldable Date Header */}
+                    <button
+                      type="button"
+                      onClick={() => toggleStudentDateKey(group.dateKey)}
+                      className={`w-full px-5 py-3.5 bg-[#fafafa] hover:bg-[#f4f4f7] transition flex flex-wrap items-center justify-between gap-3 text-left cursor-pointer select-none ${
+                        isOpen ? 'border-b border-[#f1f1f4]' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-6 h-6 rounded-md bg-white border border-[#e7e7ea] flex items-center justify-center text-[#5e5e63] shrink-0">
+                          {isOpen ? (
+                            <ChevronDown className="w-3.5 h-3.5 text-[#171719] transition-transform duration-200" />
+                          ) : (
+                            <ChevronRight className="w-3.5 h-3.5 text-[#85858a] transition-transform duration-200" />
+                          )}
+                        </div>
+                        <Calendar className="w-4 h-4 text-[#85858a]" />
+                        <h2 className="font-bold text-xs text-[#171719]" suppressHydrationWarning>
+                          {group.label}
+                        </h2>
+                        {group.badge && (
+                          <span className="px-2 py-0.5 text-[10px] font-semibold bg-[#edf5ff] text-[#007aff] rounded-full">
+                            {group.badge}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="px-2.5 py-0.5 bg-white rounded-md border border-[#e7e7ea] text-[#85858a] text-[11px]">
+                          Total: <strong className="text-[#171719]">{group.logs.length}</strong>
+                        </span>
+                        <span className="px-2.5 py-0.5 bg-[#edf9f0] border border-[#d2f4d9] text-[#2da94f] rounded-md text-[11px]">
+                          Present: <strong>{group.presentCount}</strong>
+                        </span>
+                        {group.lateCount > 0 && (
+                          <span className="px-2.5 py-0.5 bg-[#fff5e7] border border-[#ffe0b2] text-[#f5a30a] rounded-md text-[11px]">
+                            Late: <strong>{group.lateCount}</strong>
+                          </span>
+                        )}
+                        <span className="text-[11px] text-[#85858a] pl-1 font-medium hidden sm:inline">
+                          {isOpen ? 'Click to fold' : 'Click to unfold'}
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Table Container with Horizontal Scrolling */}
+                    {isOpen && (
+                      <div className="w-full overflow-x-auto animate-fade-in">
+                        <table className="w-full min-w-[760px] text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b border-[#f1f1f4] text-[10px] uppercase font-semibold tracking-wider text-[#929297]">
+                              <th className="py-3 px-5 whitespace-nowrap">Student</th>
+                              <th className="py-3 px-4 whitespace-nowrap">Time Entered</th>
+                              <th className="py-3 px-4 whitespace-nowrap">Status</th>
+                              <th className="py-3 px-4 whitespace-nowrap">Check-In Type</th>
+                              <th className="py-3 px-5 whitespace-nowrap text-right">Parent SMS Notification</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#f7f7f9]">
+                            {group.logs.map((log) => {
+                              const logTime = formatEATTime(log.occurred_at, { hour: '2-digit', minute: '2-digit' });
+                              
+                              const personName = log.people?.full_name || 'Student';
+                              const initials = personName
+                                .split(' ')
+                                .map((n: string) => n[0])
+                                .join('')
+                                .substring(0, 2)
+                                .toUpperCase();
+
+                              return (
+                                <tr key={log.id} className="hover:bg-[#fbfbfd] transition">
+                                  <td className="py-3 px-5 whitespace-nowrap">
+                                    <div className="flex items-center gap-2.5">
+                                      <div className="w-7 h-7 rounded-full bg-[#f0f0f3] text-[#555] flex items-center justify-center font-bold text-[10px]">
+                                        {initials}
+                                      </div>
+                                      <div>
+                                        <div className="font-semibold text-[#171719] text-xs">{personName}</div>
+                                        <div className="text-[10px] text-[#929297]">
+                                          {log.people?.classes?.name || 'Class Student'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  
+                                  <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-[#171719]" suppressHydrationWarning>
+                                    {logTime}
+                                  </td>
+                                  
+                                  <td className="py-3 px-4 whitespace-nowrap">
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium ${
+                                      log.status === 'present'
+                                        ? 'bg-[#edf9f0] text-[#2da94f]'
+                                        : log.status === 'late'
+                                        ? 'bg-[#fff5e7] text-[#f5a30a]'
+                                        : 'bg-[#fff0ef] text-[#ef4444]'
+                                    }`}>
+                                      <span className={`w-1.5 h-1.5 rounded-full ${
+                                        log.status === 'present' ? 'bg-[#30b357]' : log.status === 'late' ? 'bg-[#f5a30a]' : 'bg-[#ef4444]'
+                                      }`} />
+                                      <span className="capitalize">{log.status}</span>
+                                    </span>
+                                  </td>
+
+                                  <td className="py-3 px-4 whitespace-nowrap text-xs text-[#5e5e63]">
+                                    <span className="capitalize">{(log.attendance_type || 'check_in').replace(/_/g, ' ')}</span>
+                                  </td>
+
+                                  <td className="py-3 px-5 whitespace-nowrap text-right">
+                                    <div className="inline-flex items-center gap-1.5 text-xs text-[#2da94f] font-medium bg-[#edf9f0] px-2.5 py-0.5 rounded-full">
+                                      <Send className="w-3 h-3 text-[#30b357]" />
+                                      <span>SMS Delivered</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             ) : (
               <div className="bg-white border border-[#e7e7ea] rounded-[14px] p-12 text-center shadow-[0_1px_2px_rgba(0,0,0,0.02)] space-y-2">
                 <Clock className="w-8 h-8 text-[#929297] mx-auto" />

@@ -278,3 +278,81 @@ export async function resetTeacherPinAction(personId: string) {
   }
 }
 
+export async function updatePersonDeviceUserIdAction(personId: string, deviceUserId: string | null) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: 'Not authenticated. Please log in.' };
+  }
+
+  try {
+    const adminClient = createAdminClient();
+    const cleanUid = deviceUserId && deviceUserId.trim() ? deviceUserId.trim() : null;
+
+    // 1. Fetch person details to verify and get info for device command
+    const { data: person, error: pErr } = await adminClient
+      .from('people')
+      .select('id, full_name, role, school_id, class_id, classes:class_id(name)')
+      .eq('id', personId)
+      .single();
+
+    if (pErr || !person) {
+      return { error: 'Person record not found.' };
+    }
+
+    // 2. If UID is being set, ensure it's not already used by another person in the same school
+    if (cleanUid) {
+      const { data: existingPerson } = await adminClient
+        .from('people')
+        .select('id, full_name, role')
+        .eq('school_id', person.school_id)
+        .eq('device_user_id', cleanUid)
+        .neq('id', personId)
+        .maybeSingle();
+
+      if (existingPerson) {
+        return { 
+          error: `Biometric UID ${cleanUid} is already assigned to ${existingPerson.full_name} (${existingPerson.role}).` 
+        };
+      }
+    }
+
+    // 3. Update device_user_id in people table
+    const { error: updateErr } = await adminClient
+      .from('people')
+      .update({ device_user_id: cleanUid })
+      .eq('id', personId);
+
+    if (updateErr) {
+      console.error('Error updating device_user_id:', updateErr);
+      return { error: updateErr.message || 'Failed to update biometric UID.' };
+    }
+
+    // 4. If cleanUid is assigned, enqueue command to ZKTeco terminal
+    if (cleanUid) {
+      try {
+        const { formatZKTecoDisplayName } = await import('@/utils/zkteco/formatter');
+        const { enqueueDeviceCommand } = await import('@/utils/zkteco/commandQueue');
+
+        const displayName = formatZKTecoDisplayName({
+          full_name: person.full_name,
+          role: person.role,
+          classes: (person as any).classes?.name ? { name: (person as any).classes.name } : null
+        });
+
+        await enqueueDeviceCommand(`DATA UPDATE userinfo PIN=${cleanUid}\tName=${displayName}\tPri=0`);
+      } catch (cmdErr) {
+        console.warn('Non-blocking: Failed to enqueue ADMS user sync command:', cmdErr);
+      }
+    }
+
+    revalidatePath('/dashboard/people');
+    revalidatePath('/dashboard/attendance');
+    revalidatePath('/dashboard');
+    return { success: true };
+  } catch (err: any) {
+    console.error('updatePersonDeviceUserIdAction error:', err);
+    return { error: err?.message || 'An unexpected error occurred.' };
+  }
+}
+
