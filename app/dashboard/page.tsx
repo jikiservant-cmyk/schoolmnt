@@ -67,37 +67,37 @@ export default async function DashboardPage() {
         .limit(10)
     ]);
 
-    studentCount = students || 1248;
-    teacherCount = teachers || 42;
-    classCount = classes || 12;
+    studentCount = students || 0;
+    teacherCount = teachers || 0;
+    classCount = classes || 0;
     devicesList = devicesData || [];
     recentLogs = logsData || [];
     recentMessages = messagesData || [];
   } catch (err) {
     console.error('Error loading dashboard page data:', err);
-    studentCount = 1248;
-    teacherCount = 42;
+    studentCount = 0;
+    teacherCount = 0;
   }
 
   // Student metrics
   const studentLogs = recentLogs.filter(l => (l.people?.role || 'student') === 'student');
-  const presentCount = studentLogs.filter(l => l.status === 'present').length || Math.round(studentCount * 0.747);
-  const lateCount = studentLogs.filter(l => l.status === 'late').length || Math.round(studentCount * 0.055);
+  const presentCount = studentLogs.filter(l => l.status === 'present').length;
+  const lateCount = studentLogs.filter(l => l.status === 'late').length;
   const absentCount = Math.max(0, studentCount - (presentCount + lateCount));
 
-  const presentPct = studentCount > 0 ? Number(((presentCount / studentCount) * 100).toFixed(1)) : 74.7;
-  const latePct = studentCount > 0 ? Number(((lateCount / studentCount) * 100).toFixed(1)) : 5.5;
-  const absentPct = studentCount > 0 ? Number(((absentCount / studentCount) * 100).toFixed(1)) : 19.8;
+  const presentPct = studentCount > 0 ? Number(((presentCount / studentCount) * 100).toFixed(1)) : 0;
+  const latePct = studentCount > 0 ? Number(((lateCount / studentCount) * 100).toFixed(1)) : 0;
+  const absentPct = studentCount > 0 ? Number(((absentCount / studentCount) * 100).toFixed(1)) : 0;
 
   // Teacher metrics
   const teacherLogs = recentLogs.filter(l => l.people?.role === 'teacher' || l.people?.role === 'admin');
-  const teacherPresentCount = teacherLogs.filter(l => l.status === 'present').length || Math.round(teacherCount * 0.88);
-  const teacherLateCount = teacherLogs.filter(l => l.status === 'late').length || Math.round(teacherCount * 0.07);
+  const teacherPresentCount = teacherLogs.filter(l => l.status === 'present').length;
+  const teacherLateCount = teacherLogs.filter(l => l.status === 'late').length;
   const teacherAbsentCount = Math.max(0, teacherCount - (teacherPresentCount + teacherLateCount));
 
-  const teacherPresentPct = teacherCount > 0 ? Number(((teacherPresentCount / teacherCount) * 100).toFixed(1)) : 88.0;
-  const teacherLatePct = teacherCount > 0 ? Number(((teacherLateCount / teacherCount) * 100).toFixed(1)) : 7.0;
-  const teacherAbsentPct = teacherCount > 0 ? Number(((teacherAbsentCount / teacherCount) * 100).toFixed(1)) : 5.0;
+  const teacherPresentPct = teacherCount > 0 ? Number(((teacherPresentCount / teacherCount) * 100).toFixed(1)) : 0;
+  const teacherLatePct = teacherCount > 0 ? Number(((teacherLateCount / teacherCount) * 100).toFixed(1)) : 0;
+  const teacherAbsentPct = teacherCount > 0 ? Number(((teacherAbsentCount / teacherCount) * 100).toFixed(1)) : 0;
 
   // Dynamic greeting
   const hour = new Date().getHours();

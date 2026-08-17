@@ -571,7 +571,7 @@ export default function DashboardClient({
               </div>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#edf9f0] text-[#2da94f]">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#30b357] animate-pulse" />
-                <span>{devicesList.length || 2} Online</span>
+                <span>{devicesList.length || 0} Online</span>
               </span>
             </div>
 
@@ -592,33 +592,7 @@ export default function DashboardClient({
                   </div>
                 ))
               ) : (
-                <>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-[#fafafa] border border-[#f0f0f3]">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-md bg-white border border-[#e7e7ea] text-[#171719] grid place-items-center text-xs">
-                        <Smartphone className="w-3.5 h-3.5 text-[#5e5e63]" />
-                      </div>
-                      <div>
-                        <div className="text-[11px] font-medium text-[#171719]">Main Gate Terminal</div>
-                        <div className="text-[9px] text-[#929297]">F18 · ADMS Push</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] text-[#30b357] font-medium">Online</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-[#fafafa] border border-[#f0f0f3]">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-md bg-white border border-[#e7e7ea] text-[#171719] grid place-items-center text-xs">
-                        <Smartphone className="w-3.5 h-3.5 text-[#5e5e63]" />
-                      </div>
-                      <div>
-                        <div className="text-[11px] font-medium text-[#171719]">Science Block Terminal</div>
-                        <div className="text-[9px] text-[#929297]">F18 · ADMS Push</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] text-[#30b357] font-medium">Online</span>
-                  </div>
-                </>
+                <div className="text-[11px] text-[#929297] text-center p-3">No active devices found</div>
               )}
             </div>
 

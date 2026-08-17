@@ -53,29 +53,28 @@ export async function getAttendanceData() {
       .from('attendance_logs')
       .select(`
         *,
-        people:people (
+        people!inner (
           id,
           full_name,
           role,
           class_id,
           phone,
           device_user_id,
+          school_id,
           classes:class_id (
             name
           )
         )
       `)
-      .eq('school_id', schoolId)
+      .eq('people.school_id', schoolId)
       .order('occurred_at', { ascending: false })
       .limit(500);
 
     if (!error && data) {
       logs = data;
     }
-  }
-
-  // Fallback if logs by school_id is empty
-  if (logs.length === 0) {
+  } else {
+    // If no school ID could be determined, fallback strictly to authenticated user scope
     const { data, error } = await supabase
       .from('attendance_logs')
       .select(`
@@ -102,19 +101,18 @@ export async function getAttendanceData() {
 
   // 2. Fetch classes
   let classes: any[] = [];
-  const { data: classesData } = await supabase
-    .from('classes')
-    .select('id, name')
-    .order('name');
+  let classesQuery = supabase.from('classes').select('id, name').order('name');
+  if (schoolId) {
+    classesQuery = classesQuery.eq('school_id', schoolId);
+  }
+  const { data: classesData } = await classesQuery;
   if (classesData) {
     classes = classesData;
   }
 
   // 3. Fetch all registered people (students, teachers, admins)
   let people: any[] = [];
-  const { data: peopleData } = await supabase
-    .from('people')
-    .select(`
+  let peopleQuery = supabase.from('people').select(`
       id,
       full_name,
       role,
@@ -125,8 +123,13 @@ export async function getAttendanceData() {
       classes:class_id (
         name
       )
-    `)
-    .order('full_name');
+    `).order('full_name');
+  
+  if (schoolId) {
+    peopleQuery = peopleQuery.eq('school_id', schoolId);
+  }
+
+  const { data: peopleData } = await peopleQuery;
   if (peopleData) {
     people = peopleData;
   }
@@ -154,12 +157,6 @@ export async function getAttendanceData() {
 
     if (data) {
       school = data;
-    } else {
-      school = {
-        id: 'default',
-        name: 'Na\'Jiki Academy',
-        settings: { balance: 150000 }
-      };
     }
   }
 

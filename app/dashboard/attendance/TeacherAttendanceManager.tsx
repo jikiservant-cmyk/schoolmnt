@@ -5,21 +5,10 @@ import {
   Briefcase, 
   Clock, 
   Search, 
-  Plus, 
   Calendar, 
-  CheckCircle2, 
-  AlertCircle, 
   RefreshCw, 
-  UserCheck, 
-  Smartphone, 
-  X,
-  Phone,
-  Send,
-  User,
-  Sparkles,
-  ShieldCheck
+  X
 } from 'lucide-react';
-import { markTeacherAttendanceAction } from './actions';
 
 interface TeacherAttendanceManagerProps {
   logs: any[];
@@ -34,11 +23,6 @@ export default function TeacherAttendanceManager({
 }: TeacherAttendanceManagerProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'late'>('all');
-  const [showCheckInModal, setShowCheckInModal] = useState(false);
-  const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
-  const [customStatus, setCustomStatus] = useState<'present' | 'late'>('present');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   // Filter logs for teachers/staff only
   const teacherLogs = useMemo(() => {
@@ -126,29 +110,6 @@ export default function TeacherAttendanceManager({
       });
   }, [filteredTeacherLogs]);
 
-  const handleRecordTeacherClockIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedTeacherId) return;
-
-    setIsSubmitting(true);
-    setActionMessage(null);
-
-    try {
-      const res = await markTeacherAttendanceAction(selectedTeacherId, customStatus);
-      if (res.error) {
-        setActionMessage(res.error);
-      } else {
-        setShowCheckInModal(false);
-        setSelectedTeacherId('');
-        onRefresh();
-      }
-    } catch {
-      setActionMessage('Failed to record teacher attendance');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       
@@ -210,20 +171,6 @@ export default function TeacherAttendanceManager({
               Late
             </button>
           </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (teachers.length > 0) {
-                setSelectedTeacherId(teachers[0].id);
-              }
-              setShowCheckInModal(true);
-            }}
-            className="h-9 px-3 bg-[#007aff] hover:bg-[#0062cc] text-white rounded-[9px] text-xs font-medium flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Clock In Faculty</span>
-          </button>
 
           <button
             type="button"
@@ -366,139 +313,10 @@ export default function TeacherAttendanceManager({
                 : 'Teachers clocking in via the biometric scanner, kiosk terminal, or manual register will automatically appear here grouped by day.'}
             </p>
             <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (teachers.length > 0) setSelectedTeacherId(teachers[0].id);
-                  setShowCheckInModal(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#007aff] text-white rounded-[8px] text-xs font-medium shadow-2xs hover:bg-[#0062cc] transition cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Clock In Faculty Now</span>
-              </button>
             </div>
           </div>
         )}
       </div>
-
-      {/* Clock In Teacher Modal */}
-      {showCheckInModal && (
-        <div className="fixed inset-0 z-50 bg-[#171719]/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-[#e7e7ea] rounded-[16px] max-w-md w-full p-6 shadow-2xl space-y-4 relative animate-fade-in">
-            <div className="flex items-center justify-between pb-3 border-b border-[#f1f1f4]">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-full bg-[#edf5ff] border border-[#d6e7ff] flex items-center justify-center text-[#007aff]">
-                  <UserCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-[#171719]">
-                    Record Faculty Clock-In
-                  </h3>
-                  <p className="text-[11px] text-[#85858a]">
-                    Register attendance arrival for a faculty member
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowCheckInModal(false)}
-                className="p-1 rounded-lg text-[#929297] hover:text-[#171719] transition cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {actionMessage && (
-              <div className="bg-[#fff0ef] border border-[#fbd1cf] text-[#ef4444] text-xs p-3 rounded-lg flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{actionMessage}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleRecordTeacherClockIn} className="space-y-4">
-              <div>
-                <label className="block text-[11px] font-semibold text-[#171719] mb-1.5">
-                  Select Teacher / Faculty Member
-                </label>
-                <select
-                  required
-                  value={selectedTeacherId}
-                  onChange={(e) => setSelectedTeacherId(e.target.value)}
-                  className="w-full h-9 px-3 bg-white border border-[#e1e1e5] rounded-[9px] text-xs text-[#171719] focus:outline-none focus:border-[#007aff]"
-                >
-                  {teachers.map(t => (
-                    <option key={t.id} value={t.id}>
-                      {t.full_name} ({t.role}) {t.device_user_id ? `— UID: ${t.device_user_id}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-[#171719] mb-1.5">
-                  Arrival Status (Automatic based on 8:00 AM cutoff)
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setCustomStatus('present')}
-                    className={`py-2 px-3 rounded-[8px] text-xs font-medium border transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                      customStatus === 'present'
-                        ? 'bg-[#edf9f0] border-[#30b357] text-[#2da94f] font-semibold shadow-2xs'
-                        : 'bg-white border-[#e1e1e5] text-[#5e5e63]'
-                    }`}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-[#30b357]" />
-                    <span>On-Time (Present)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setCustomStatus('late')}
-                    className={`py-2 px-3 rounded-[8px] text-xs font-medium border transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                      customStatus === 'late'
-                        ? 'bg-[#fff5e7] border-[#f5a30a] text-[#f5a30a] font-semibold shadow-2xs'
-                        : 'bg-white border-[#e1e1e5] text-[#5e5e63]'
-                    }`}
-                  >
-                    <Clock className="w-3.5 h-3.5 text-[#f5a30a]" />
-                    <span>Late Arrival</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="pt-2 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCheckInModal(false)}
-                  className="flex-1 h-9 border border-[#e1e1e5] rounded-[8px] text-xs font-medium text-[#5e5e63] hover:bg-[#f7f7f8] transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex-1 h-9 bg-[#007aff] hover:bg-[#0062cc] text-white rounded-[8px] text-xs font-medium shadow-2xs transition flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Saving...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Confirm Clock-In</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
     </div>
   );

@@ -6,7 +6,7 @@ interface NajikiLogoProps {
   className?: string;
   showText?: boolean;
   subtitle?: string;
-  variant?: 'dark' | 'light' | 'auto';
+  variant?: 'light' | 'dark' | 'auto';
 }
 
 export default function NajikiLogo({

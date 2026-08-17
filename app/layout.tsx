@@ -3,6 +3,7 @@ import './globals.css';
 export const metadata = {
   title: 'Na\'Jiki Tech - Attendance Portal',
   description: 'An elegant multi-tenant attendance management system powered by Na\'Jiki Tech.',
+  manifest: '/manifest.json',
   icons: {
     icon: '/najiki_tech_logo.svg',
   },

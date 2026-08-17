@@ -1,0 +1,17 @@
+{
+  "name": "Na'Jiki Tech",
+  "short_name": "Na'Jiki",
+  "description": "Na'Jiki Tech Smart Attendance System",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#050508",
+  "theme_color": "#05AACC",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

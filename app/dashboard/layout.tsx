@@ -6,9 +6,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const supabase = await createClient();
   
   // Fetch current logged-in user and administrative session
-  let adminName = 'Administrator';
-  let schoolName = 'Na\'Jiki Academy';
-  let initials = 'DK';
+  let adminName = 'Admin';
+  let schoolName = '';
+  let initials = 'AD';
 
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -29,18 +29,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
       if (staffData && staffData.people) {
         const person = staffData.people as any;
-        adminName = person.full_name || 'Administrator';
-        schoolName = person.schools?.name || 'Na\'Jiki Academy';
+        adminName = person.full_name || 'Admin';
+        schoolName = person.schools?.name || '';
         
         initials = adminName
           .split(' ')
           .map(n => n[0])
           .join('')
           .substring(0, 2)
-          .toUpperCase() || 'DK';
+          .toUpperCase() || 'AD';
       } else {
-        adminName = user.user_metadata?.full_name || 'Administrator';
-        initials = adminName.substring(0, 2).toUpperCase() || 'DK';
+        adminName = user.user_metadata?.full_name || 'Admin';
+        initials = adminName.substring(0, 2).toUpperCase() || 'AD';
       }
     }
   } catch (err) {
